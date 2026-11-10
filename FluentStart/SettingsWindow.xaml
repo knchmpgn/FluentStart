@@ -1,0 +1,361 @@
+<Window x:Class="FluentStart.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:FluentStart"
+        Title="FluentStart settings" Width="900" Height="760" MinWidth="760" MinHeight="560"
+        WindowStartupLocation="CenterScreen" ResizeMode="CanResize"
+        Background="Transparent"
+        FontFamily="{DynamicResource Font.Ui}" FontSize="14" Foreground="{DynamicResource Brush.Text}">
+  <Window.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="Themes/Dark.xaml"/>
+        <ResourceDictionary Source="Themes/Fluent.xaml"/>
+      </ResourceDictionary.MergedDictionaries>
+      <Style TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource Brush.Text}"/>
+      </Style>
+      <Style x:Key="Section" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="16"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Margin" Value="0,24,0,8"/>
+        <Setter Property="Foreground" Value="{DynamicResource Brush.Text}"/>
+      </Style>
+      <Style x:Key="Row" TargetType="Grid">
+        <Setter Property="Margin" Value="0,10,0,0"/>
+      </Style>
+      <Style x:Key="SettingsCard" TargetType="Border">
+        <Setter Property="CornerRadius" Value="14"/>
+        <Setter Property="Background" Value="{DynamicResource Brush.Flyout}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Stroke}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Padding" Value="18,16"/>
+        <Setter Property="Margin" Value="0,12,0,0"/>
+      </Style>
+      <Style x:Key="SettingsHeader" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="16"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Margin" Value="0,0,0,12"/>
+        <Setter Property="Foreground" Value="{DynamicResource Brush.Text}"/>
+      </Style>
+      <Style x:Key="SettingsTitle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="24"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Margin" Value="0,0,0,2"/>
+        <Setter Property="Foreground" Value="{DynamicResource Brush.Text}"/>
+      </Style>
+      <Style x:Key="SettingsNavGlyph" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets"/>
+        <Setter Property="FontSize" Value="16"/>
+        <Setter Property="Width" Value="24"/>
+        <Setter Property="TextAlignment" Value="Center"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="Margin" Value="0,0,8,0"/>
+      </Style>
+      <Style x:Key="SettingsPageTitle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="20"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Margin" Value="0,4,0,2"/>
+      </Style>
+      <Style TargetType="TabItem">
+        <Setter Property="Foreground" Value="{DynamicResource Brush.TextSecondary}"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="Margin" Value="4,2"/>
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="TabItem">
+              <Grid>
+                <Border x:Name="NavBackground" CornerRadius="7" Background="Transparent" BorderThickness="1" BorderBrush="Transparent"/>
+                <Border x:Name="NavIndicator" Width="3" Margin="1,8,0,8" HorizontalAlignment="Left" CornerRadius="2" Background="{DynamicResource Brush.Accent}" Visibility="Collapsed"/>
+                <ContentPresenter ContentSource="Header" Margin="14,10,8,10" VerticalAlignment="Center" RecognizesAccessKey="True"/>
+              </Grid>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                  <Setter TargetName="NavBackground" Property="Background" Value="{DynamicResource Brush.Hover}"/>
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                  <Setter TargetName="NavBackground" Property="Background" Value="{DynamicResource Brush.Control}"/>
+                  <Setter TargetName="NavIndicator" Property="Visibility" Value="Visible"/>
+                  <Setter Property="Foreground" Value="{DynamicResource Brush.Text}"/>
+                </Trigger>
+                <Trigger Property="IsKeyboardFocused" Value="True">
+                  <Setter TargetName="NavBackground" Property="BorderBrush" Value="{DynamicResource Brush.Accent}"/>
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+      <Style x:Key="SettingsLabel" TargetType="TextBlock">
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="Foreground" Value="{DynamicResource Brush.Text}"/>
+        <Setter Property="Margin" Value="0,0,16,0"/>
+      </Style>
+      <Style x:Key="SettingsActionButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Padding" Value="12,7"/>
+        <Setter Property="Margin" Value="0,0,8,8"/>
+        <Setter Property="MinHeight" Value="32"/>
+        <Setter Property="MinWidth" Value="0"/>
+        <Setter Property="HorizontalAlignment" Value="Left"/>
+      </Style>
+      <Style x:Key="SettingsCheckBox" TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
+        <Setter Property="Margin" Value="0,0,0,8"/>
+      </Style>
+
+      <!-- Windows 11 style switch: 44 x 22 pill, a small knob on the left when off, an accent fill with a light knob on the right when on. -->
+      <Style x:Key="SettingsToggle" TargetType="CheckBox">
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Focusable" Value="True"/>
+        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="CheckBox">
+              <Grid Width="44" Height="22" Background="Transparent" SnapsToDevicePixels="True">
+                <Border x:Name="Track" CornerRadius="11" BorderThickness="1"
+                        BorderBrush="{DynamicResource Brush.TextSecondary}" Background="Transparent"/>
+                <Ellipse x:Name="Knob" Width="12" Height="12" Margin="5,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center"
+                         Fill="{DynamicResource Brush.TextSecondary}"/>
+              </Grid>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsChecked" Value="True">
+                  <Setter TargetName="Track" Property="Background" Value="{DynamicResource Brush.Accent}"/>
+                  <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource Brush.Accent}"/>
+                  <Setter TargetName="Knob" Property="Fill" Value="{DynamicResource Brush.OnAccent}"/>
+                  <Setter TargetName="Knob" Property="HorizontalAlignment" Value="Right"/>
+                  <Setter TargetName="Knob" Property="Margin" Value="0,0,5,0"/>
+                </Trigger>
+                <Trigger Property="IsMouseOver" Value="True">
+                  <Setter TargetName="Knob" Property="Width" Value="14"/>
+                  <Setter TargetName="Knob" Property="Height" Value="14"/>
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+    </ResourceDictionary>
+  </Window.Resources>
+
+  <Grid Margin="24,18,24,20">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+    </Grid.RowDefinitions>
+    <StackPanel Margin="0,0,0,18">
+      <TextBlock Text="FluentStart Settings" Style="{StaticResource SettingsTitle}"/>
+      <TextBlock Text="Personalize your Start menu and manage how it works" FontSize="12" Foreground="{DynamicResource Brush.TextSecondary}"/>
+    </StackPanel>
+
+    <TabControl x:Name="SettingsTabs" Grid.Row="1" TabStripPlacement="Left" BorderThickness="0" Background="Transparent" SelectionChanged="SettingsTabs_SelectionChanged">
+      <TabControl.Resources>
+        <Style TargetType="TabPanel">
+          <Setter Property="Width" Value="176"/>
+        </Style>
+      </TabControl.Resources>
+      <TabItem AutomationProperties.Name="Appearance settings">
+        <TabItem.Header><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE790;" Style="{StaticResource SettingsNavGlyph}"/><TextBlock Text="Appearance"/></StackPanel></TabItem.Header>
+        <ScrollViewer x:Name="SettingsScroll" VerticalScrollBarVisibility="Auto" Background="Transparent">
+          <StackPanel Margin="20,4,12,24" MaxWidth="680" HorizontalAlignment="Stretch">
+            <TextBlock Text="Appearance" Style="{StaticResource SettingsPageTitle}"/>
+            <TextBlock Text="Set the look, layout, and typography of the Start menu." FontSize="12" Foreground="{DynamicResource Brush.TextSecondary}" Margin="0,0,0,10"/>
+            <Border Style="{StaticResource SettingsCard}">
+              <StackPanel>
+                <TextBlock Text="Theme and layout" Style="{StaticResource SettingsHeader}"/>
+                <Grid Style="{StaticResource Row}"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="200"/></Grid.ColumnDefinitions><TextBlock Text="Theme" Style="{StaticResource SettingsLabel}"/><ComboBox x:Name="ThemeBox" Grid.Column="1" SelectionChanged="Changed"/></Grid>
+                <Grid Style="{StaticResource Row}"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="200"/></Grid.ColumnDefinitions><TextBlock Text="Backdrop" Style="{StaticResource SettingsLabel}"/><ComboBox x:Name="BackdropBox" Grid.Column="1" SelectionChanged="Changed"/></Grid>
+                <Grid Style="{StaticResource Row}"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="200"/></Grid.ColumnDefinitions><TextBlock Text="Menu alignment" Style="{StaticResource SettingsLabel}"/><ComboBox x:Name="AlignBox" Grid.Column="1" SelectionChanged="Changed"/></Grid>
+                <Grid Style="{StaticResource Row}"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="200"/></Grid.ColumnDefinitions><TextBlock Text="Show" Style="{StaticResource SettingsLabel}"/><ComboBox x:Name="ViewModeBox" Grid.Column="1" SelectionChanged="Changed"/></Grid>
+                <CheckBox x:Name="TileColorCheck" Style="{StaticResource SettingsCheckBox}" Margin="0,18,0,8" Content="Color Tiles based on App" Click="Changed"/>
+                <CheckBox x:Name="TileNamesCheck" Style="{StaticResource SettingsCheckBox}" Content="Show Names on Tiles" Click="Changed"/>
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource SettingsCard}">
+              <StackPanel>
+                <TextBlock Text="Typography" Style="{StaticResource SettingsHeader}"/>
+                <Grid Style="{StaticResource Row}"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="200"/></Grid.ColumnDefinitions><TextBlock Text="App list font size" Style="{StaticResource SettingsLabel}"/><ComboBox x:Name="AppFontSizeBox" Grid.Column="1" SelectionChanged="Changed"/></Grid>
+                <Grid Style="{StaticResource Row}"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="200"/></Grid.ColumnDefinitions><TextBlock Text="UI font size" Style="{StaticResource SettingsLabel}"/><ComboBox x:Name="UiFontSizeBox" Grid.Column="1" SelectionChanged="Changed"/></Grid>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem AutomationProperties.Name="App list settings">
+        <TabItem.Header><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8FD;" Style="{StaticResource SettingsNavGlyph}"/><TextBlock Text="Apps"/></StackPanel></TabItem.Header>
+        <ScrollViewer x:Name="AppsScroll" VerticalScrollBarVisibility="Auto" Background="Transparent">
+          <StackPanel Margin="20,4,12,24" MaxWidth="680">
+            <TextBlock Text="Apps" Style="{StaticResource SettingsPageTitle}"/>
+            <TextBlock Text="Choose what appears in the app list." FontSize="12" Foreground="{DynamicResource Brush.TextSecondary}" Margin="0,0,0,10"/>
+            <Border Style="{StaticResource SettingsCard}">
+              <StackPanel>
+                <TextBlock Text="App List" Style="{StaticResource SettingsHeader}"/>
+                <CheckBox x:Name="FoldersCheck" Style="{StaticResource SettingsCheckBox}" Content="Show Start menu folders (like the native list)" Click="Changed"/>
+                <CheckBox x:Name="MostUsedCheck" Style="{StaticResource SettingsCheckBox}" Content="Show &quot;Most used&quot;" Click="Changed"/>
+                <CheckBox x:Name="RecentCheck" Style="{StaticResource SettingsCheckBox}" Content="Show &quot;Recently added&quot;" Click="Changed"/>
+                <Grid Style="{StaticResource Row}" Margin="0,0,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="200"/></Grid.ColumnDefinitions><TextBlock Text="Max Items / Quick Section" Style="{StaticResource SettingsLabel}"/><ComboBox x:Name="QuickBox" Grid.Column="1" SelectionChanged="Changed"/></Grid>
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource SettingsCard}">
+              <StackPanel>
+                <TextBlock Text="Hidden Apps" Style="{StaticResource SettingsHeader}"/>
+                <CheckBox x:Name="ShowHiddenCheck" Style="{StaticResource SettingsCheckBox}" Content="Show hidden apps (dimmed) in the list and search" Click="Changed"/>
+                <ListBox x:Name="HiddenList" Height="160" Margin="0,6" DisplayMemberPath="DisplayName" Background="{DynamicResource Brush.Control}" BorderBrush="{DynamicResource Brush.ControlStroke}" BorderThickness="1"/>
+                <StackPanel Orientation="Horizontal"><Button Content="Unhide selected" Click="Unhide_Click" Margin="0,0,8,0"/><Button Content="Unhide all" Click="UnhideAll_Click"/></StackPanel>
+                <TextBlock TextWrapping="Wrap" FontSize="12" Margin="0,6,0,0" Foreground="{DynamicResource Brush.TextSecondary}" Text="Hiding and renaming only change this Start menu; shortcuts and apps are never modified. Right-click an app to hide or rename it."/>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem AutomationProperties.Name="Search settings">
+        <TabItem.Header><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE721;" Style="{StaticResource SettingsNavGlyph}"/><TextBlock Text="Search"/></StackPanel></TabItem.Header>
+        <ScrollViewer x:Name="SearchScroll" VerticalScrollBarVisibility="Auto" Background="Transparent">
+          <StackPanel Margin="20,4,12,24" MaxWidth="680">
+            <TextBlock Text="Search" Style="{StaticResource SettingsPageTitle}"/>
+            <TextBlock Text="Control search providers and related features." FontSize="12" Foreground="{DynamicResource Brush.TextSecondary}" Margin="0,0,0,10"/>
+            <Border Style="{StaticResource SettingsCard}">
+              <StackPanel>
+                <TextBlock Text="Search sources" Style="{StaticResource SettingsHeader}"/>
+                <CheckBox x:Name="SearchFilesCheck" Style="{StaticResource SettingsCheckBox}" Content="Include files and folders in search results" Click="Changed"/>
+                <CheckBox x:Name="EverythingCheck" Style="{StaticResource SettingsCheckBox}" Content="Use Everything for file search when available" Click="EverythingChanged"/>
+                <CheckBox x:Name="EverythingAutoStartCheck" Style="{StaticResource SettingsCheckBox}" Margin="24,4,0,4" Content="Start Everything in the background if it is installed but not running" Click="Changed"/>
+                <TextBlock x:Name="EverythingStatus" TextWrapping="Wrap" FontSize="12" Margin="24,2,0,4" Foreground="{DynamicResource Brush.TextSecondary}"/>
+                <Button Content="Detect Everything again" Click="Detect_Click" HorizontalAlignment="Left" Margin="24,2,0,8"/>
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource SettingsCard}">
+              <StackPanel>
+                <TextBlock Text="Web search" Style="{StaticResource SettingsHeader}"/>
+                <Grid Style="{StaticResource Row}"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><TextBlock Text="Web search link" VerticalAlignment="Center" Margin="0,0,12,0"/><TextBox x:Name="WebUrlBox" Grid.Column="1" TextChanged="Changed"/></Grid>
+                <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource Brush.TextSecondary}" Text="{}{0} is replaced by the search text. Without Everything, files come from the Windows Search index."/>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem AutomationProperties.Name="Navigation settings">
+        <TabItem.Header><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE700;" Style="{StaticResource SettingsNavGlyph}"/><TextBlock Text="Navigation"/></StackPanel></TabItem.Header>
+        <ScrollViewer x:Name="NavigationScroll" VerticalScrollBarVisibility="Auto" Background="Transparent">
+          <StackPanel Margin="20,4,12,24" MaxWidth="680">
+            <TextBlock Text="Navigation" Style="{StaticResource SettingsPageTitle}"/>
+            <TextBlock Text="Choose which shortcuts appear in the Start menu rail." FontSize="12" Foreground="{DynamicResource Brush.TextSecondary}" Margin="0,0,0,10"/>
+            <Border Style="{StaticResource SettingsCard}" Padding="0,6,0,10">
+              <StackPanel>
+                <TextBlock Text="Rail Buttons" Style="{StaticResource SettingsHeader}" Margin="18,10,18,4"/>
+                <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource Brush.TextSecondary}" Margin="18,0,18,4"
+                           Text="Choose which buttons appear above the Power button on the left rail. Folders use their normal Windows icons."/>
+                <ItemsControl x:Name="RailChoicesList" Focusable="False">
+                  <ItemsControl.GroupStyle>
+                    <GroupStyle>
+                      <GroupStyle.HeaderTemplate>
+                        <DataTemplate>
+                          <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold"
+                                     Foreground="{DynamicResource Brush.TextSecondary}" Margin="18,14,18,4"/>
+                        </DataTemplate>
+                      </GroupStyle.HeaderTemplate>
+                    </GroupStyle>
+                  </ItemsControl.GroupStyle>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Border Margin="8,1" Padding="10,8" CornerRadius="8" Background="Transparent">
+                        <Border.Style>
+                          <Style TargetType="Border">
+                            <Style.Triggers>
+                              <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="{DynamicResource Brush.Hover}"/>
+                              </Trigger>
+                            </Style.Triggers>
+                          </Style>
+                        </Border.Style>
+                        <Grid>
+                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="44"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                          </Grid.ColumnDefinitions>
+                          <Grid Width="32" Height="32" HorizontalAlignment="Left">
+                            <Image Source="{Binding Icon}" Width="28" Height="28" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   RenderOptions.BitmapScalingMode="HighQuality"/>
+                            <TextBlock Text="{Binding Glyph}" FontFamily="{DynamicResource FluentIcons}" FontSize="20"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                          </Grid>
+                          <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                            <TextBlock Text="{Binding Name}"/>
+                            <TextBlock Text="{Binding Description}" FontSize="12" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource Brush.TextSecondary}"/>
+                          </StackPanel>
+                          <CheckBox Grid.Column="2" Style="{StaticResource SettingsToggle}" IsChecked="{Binding IsEnabled, Mode=TwoWay}"
+                                    VerticalAlignment="Center" AutomationProperties.Name="{Binding Name}"/>
+                        </Grid>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource SettingsCard}">
+              <StackPanel>
+                <TextBlock Text="Custom Rail Buttons" Style="{StaticResource SettingsHeader}" Margin="0,0,0,4"/>
+                <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource Brush.TextSecondary}" Margin="0,0,0,8" Text="Add buttons with a name, Segoe Fluent glyph, and target path or URI."/>
+                <ListBox x:Name="CustomButtonsList" Height="160" Margin="0,6" DisplayMemberPath="Name" Background="{DynamicResource Brush.Control}" BorderBrush="{DynamicResource Brush.ControlStroke}" BorderThickness="1"/>
+                <StackPanel Orientation="Horizontal" Margin="0,6,0,0"><Button Content="Add" Click="AddCustomButton_Click" Margin="0,0,8,0"/><Button Content="Remove" Click="RemoveCustomButton_Click"/></StackPanel>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem AutomationProperties.Name="Behavior settings">
+        <TabItem.Header><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE713;" Style="{StaticResource SettingsNavGlyph}"/><TextBlock Text="Behavior"/></StackPanel></TabItem.Header>
+        <ScrollViewer x:Name="BehaviorScroll" VerticalScrollBarVisibility="Auto" Background="Transparent">
+          <StackPanel Margin="20,4,12,24" MaxWidth="680">
+            <TextBlock Text="Behavior" Style="{StaticResource SettingsPageTitle}"/>
+            <TextBlock Text="Choose how FluentStart opens and starts with Windows." FontSize="12" Foreground="{DynamicResource Brush.TextSecondary}" Margin="0,0,0,10"/>
+            <Border Style="{StaticResource SettingsCard}">
+              <StackPanel>
+                <TextBlock Text="Open the Start menu with" Style="{StaticResource SettingsHeader}"/>
+                <CheckBox x:Name="WinKeyCheck" Style="{StaticResource SettingsCheckBox}" Content="Windows Key" Click="Changed"/>
+                <CheckBox x:Name="StartBtnCheck" Style="{StaticResource SettingsCheckBox}" Content="Start Button" Click="Changed"/>
+                <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource Brush.TextSecondary}" Margin="0,4,0,0" Text="When open: Esc hides the menu • Menu key/right-click for context menus • F2 to rename • Arrow keys to navigate • Type to search."/>
+              </StackPanel>
+            </Border>
+            <Border Style="{StaticResource SettingsCard}">
+              <StackPanel>
+                <TextBlock Text="Startup" Style="{StaticResource SettingsHeader}"/>
+                <CheckBox x:Name="StartupCheck" Style="{StaticResource SettingsCheckBox}" Content="Start with Windows" Click="StartupChanged"/>
+                <StackPanel Orientation="Horizontal" Margin="0,6"><Button Content="Install elevated logon task" Click="InstallTask_Click" Margin="0,0,8,0"/><Button Content="Remove task" Click="RemoveTask_Click"/></StackPanel>
+                <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="12" Text="The elevated task (UAC prompt) lets the hooks see input going to elevated windows. Without it, Win-key and Start-button interception does not work while an elevated app is focused."/>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem AutomationProperties.Name="Data settings">
+        <TabItem.Header><StackPanel Orientation="Horizontal"><TextBlock Text="&#xE8B7;" Style="{StaticResource SettingsNavGlyph}"/><TextBlock Text="Data"/></StackPanel></TabItem.Header>
+        <ScrollViewer x:Name="DataScroll" VerticalScrollBarVisibility="Auto" Background="Transparent">
+          <StackPanel Margin="20,4,12,24" MaxWidth="680">
+            <TextBlock Text="Data" Style="{StaticResource SettingsPageTitle}"/>
+            <TextBlock Text="Manage local preferences and app layout data." FontSize="12" Foreground="{DynamicResource Brush.TextSecondary}" Margin="0,0,0,10"/>
+            <Border Style="{StaticResource SettingsCard}">
+              <StackPanel>
+                <TextBlock Text="Manage data" Style="{StaticResource SettingsHeader}"/>
+                <TextBlock TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource Brush.TextSecondary}" Text="These actions only affect FluentStart’s local data; installed apps and Start menu shortcuts are not changed."/>
+                <WrapPanel Margin="0,12,0,0">
+                  <Button Content="Open data folder" Click="OpenData_Click" Style="{StaticResource SettingsActionButton}"/>
+                  <Button Content="Clear icon cache" Click="ClearIcons_Click" Style="{StaticResource SettingsActionButton}"/>
+                  <Button Content="Reset renames" Click="ResetRenames_Click" Style="{StaticResource SettingsActionButton}"/>
+                  <Button Content="Reset tiles" Click="ResetTiles_Click" Style="{StaticResource SettingsActionButton}"/>
+                  <Button Content="Export renames + tiles..." Click="Export_Click" Style="{StaticResource SettingsActionButton}"/>
+                  <Button Content="Import..." Click="Import_Click" Style="{StaticResource SettingsActionButton}"/>
+                </WrapPanel>
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+    </TabControl>
+  </Grid>
+</Window>

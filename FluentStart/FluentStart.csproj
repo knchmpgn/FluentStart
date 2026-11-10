@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows10.0.26100.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>FluentStart</AssemblyName>
+    <RootNamespace>FluentStart</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\FluentStart.ico</ApplicationIcon>
+    <!-- ThemeMode (Fluent theme) is experimental in .NET 9 -->
+    <NoWarn>$(NoWarn);WPF0001</NoWarn>
+
+    <!-- Startup / memory: tiered PGO + quick JIT, workstation non-concurrent GC (fewer threads, less memory), English-only satellites -->
+    <TieredPGO>true</TieredPGO>
+    <TieredCompilationQuickJitForLoops>true</TieredCompilationQuickJitForLoops>
+    <ServerGarbageCollector>false</ServerGarbageCollector>
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+    <!-- ReadyToRun only applies to RID-specific publishes: dotnet publish -c Release -r win-x64 -->
+    <PublishReadyToRun>true</PublishReadyToRun>
+
+    <!-- Release builds bundle the .NET runtime, so the output folder runs on machines without .NET installed.
+         Output goes to bin\Release\net9.0-windows10.0.26100.0\win-x64\ - copy that whole folder. -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="FluentStart.Tests" />
+  </ItemGroup>
+
+  
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.14" />
+  </ItemGroup>
+</Project>
