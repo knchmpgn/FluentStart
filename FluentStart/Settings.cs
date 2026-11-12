@@ -47,7 +47,6 @@ public sealed class Settings
     /// <summary>Web search link; {0} is replaced by the escaped query.</summary>
     public string WebSearchUrl { get; set; } = "https://www.bing.com/search?q={0}";
 
-    public bool ShowStartMenuFolders { get; set; } = true;
 
     public bool TileColorsFromIcons { get; set; } = false;
 

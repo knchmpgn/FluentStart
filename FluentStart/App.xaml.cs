@@ -245,7 +245,6 @@ public partial class App : Application
         ApplyTheme();
         _model.TileColumns = _settings.TileColumns;
         _model.UseIconColors = _settings.TileColorsFromIcons && !SystemParameters.HighContrast;
-        _model.UseFolders = _settings.ShowStartMenuFolders;
         _model.ShowTileNames = _settings.ShowTileNames;
         _win.ApplyAppearance(_dark);
         _settingsWin?.ReapplyAppearance();

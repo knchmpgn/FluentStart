@@ -53,7 +53,6 @@ public partial class SettingsWindow : Window
         QuickBox.SelectedItem = Math.Clamp(_s.QuickItems, 0, 6);
         TileColorCheck.IsChecked = _s.TileColorsFromIcons;
         TileNamesCheck.IsChecked = _s.ShowTileNames;
-        FoldersCheck.IsChecked = _s.ShowStartMenuFolders;
         MostUsedCheck.IsChecked = _s.ShowMostUsed;
         RecentCheck.IsChecked = _s.ShowRecentlyAdded;
         WinKeyCheck.IsChecked = _s.EnableWinKey;
@@ -141,7 +140,6 @@ public partial class SettingsWindow : Window
         if (QuickBox.SelectedItem is int q) _s.QuickItems = q;
         _s.TileColorsFromIcons = TileColorCheck.IsChecked == true;
         _s.ShowTileNames = TileNamesCheck.IsChecked == true;
-        _s.ShowStartMenuFolders = FoldersCheck.IsChecked == true;
         _s.ShowMostUsed = MostUsedCheck.IsChecked == true;
         _s.ShowRecentlyAdded = RecentCheck.IsChecked == true;
         _s.SearchFiles = SearchFilesCheck.IsChecked == true;

@@ -78,7 +78,6 @@ public sealed class StartModel : Observable
     private string _search = "";
     private int _tileColumns = 6;
     private bool _useIconColors;
-    private bool _useFolders = true;
 
     /// <summary>Real apps only (folders are separate rows with synthetic entries).</summary>
     public ObservableCollection<AppEntry> Apps { get; } = new();
@@ -113,13 +112,6 @@ public sealed class StartModel : Observable
     }
     private bool _showTileNames = true;
 
-    /// <summary>Mirror the Start-menu folders (expandable rows) instead of a flat list.</summary>
-    public bool UseFolders
-    {
-        get => _useFolders;
-        set { if (Set(ref _useFolders, value)) RebuildRows(); }
-    }
-
     public bool IsSearching => !string.IsNullOrWhiteSpace(_search);
 
     /// <summary>True while searching with no matches (drives the empty-state text).</summary>
@@ -148,7 +140,6 @@ public sealed class StartModel : Observable
     public StartModel(Settings settings)
     {
         _settings = settings;
-        _useFolders = settings.ShowStartMenuFolders;
         _renames = new(Storage.Load<Dictionary<string, string>>("renames.json") ?? new(), StringComparer.OrdinalIgnoreCase);
         _usage = new(Storage.Load<Dictionary<string, UsageEntry>>("usage.json") ?? new(), StringComparer.OrdinalIgnoreCase);
         _hidden = new(Storage.Load<List<string>>("hidden.json") ?? new(), StringComparer.OrdinalIgnoreCase);
@@ -248,7 +239,7 @@ public sealed class StartModel : Observable
 
         foreach (var app in Apps)
         {
-            ListRow? parent = _useFolders && !string.IsNullOrEmpty(app.FolderPath) ? EnsureFolder(app.FolderPath!) : null;
+            ListRow? parent = !string.IsNullOrEmpty(app.FolderPath) ? EnsureFolder(app.FolderPath!) : null;   // Start-menu folders are always shown as expandable rows
             var row = new ListRow(app, null, 0, parent) { FlatMode = IsSearching };
             _mainRows[app.Id] = row;
             _structRows.Add(row);

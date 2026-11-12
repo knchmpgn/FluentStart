@@ -372,7 +372,7 @@
               </TextBlock.Style>
             </TextBlock>
             <TextBox Grid.Column="1" MinHeight="32" VerticalAlignment="Center" VerticalContentAlignment="Center"
-                     Margin="3,0,6,0"
+                     Margin="7,0,6,0"
                      Text="{Binding App.EditText, UpdateSourceTrigger=PropertyChanged}"
                      Visibility="{Binding ShowEditor, Converter={StaticResource BoolToVis}}"
                      IsVisibleChanged="RenameBox_IsVisibleChanged"
@@ -406,13 +406,15 @@
     </ListBox>
 
     <!-- Tiles -->
-    <ScrollViewer x:Name="TilesScroll" Grid.Column="2" Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="12,6,4,12" Margin="0,4,0,0"
+    <ScrollViewer x:Name="TilesScroll" Grid.Column="2" Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="0" Margin="0,4,0,0"
                   KeyboardNavigation.DirectionalNavigation="Contained">
-      <StackPanel HorizontalAlignment="Left">
+      <!-- the old ScrollViewer padding (12,6,4,12) lives here as a margin: padding is outside the scrolled area and clips anything that
+           hangs over the content's edge, such as the group-rename box that is pulled left to line its text up with the group name -->
+      <StackPanel HorizontalAlignment="Left" Margin="12,6,4,12">
         <ItemsControl ItemsSource="{Binding Groups}">
           <ItemsControl.ItemTemplate>
             <DataTemplate>
-              <StackPanel Margin="0,0,0,16" HorizontalAlignment="Left" Background="Transparent" Tag="TileGroupHost">
+              <StackPanel Margin="0,0,0,8" HorizontalAlignment="Left" Background="Transparent" Tag="TileGroupHost">
                  <StackPanel.Style>
                    <Style TargetType="StackPanel">
                      <Style.Triggers>
@@ -422,7 +424,7 @@
                      </Style.Triggers>
                    </Style>
                  </StackPanel.Style>
-                   <Border Margin="0,6,6,2" Padding="0,4,10,4" CornerRadius="6" Background="Transparent"
+                   <Border Margin="0,6,6,2" Padding="0,0,10,0" MinHeight="32" CornerRadius="6" Background="Transparent"
                            MouseLeftButtonDown="GroupHeader_MouseDown" MouseMove="GroupHeader_Move">
                      <Grid>
                        <Border HorizontalAlignment="Right" VerticalAlignment="Center" Width="28" Height="22" Background="Transparent"
@@ -456,7 +458,7 @@
                            </Style>
                          </TextBlock.Style>
                        </TextBlock>
-                        <TextBox Height="24" FontFamily="{DynamicResource Font.Ui}" FontSize="{DynamicResource FontSize.Ui}" FontWeight="SemiBold" VerticalContentAlignment="Center" Padding="10,0,6,0" MinHeight="0" MinWidth="160" HorizontalAlignment="Stretch" Margin="0,0,4,0"
+                        <TextBox FontFamily="{DynamicResource Font.Ui}" FontSize="{DynamicResource FontSize.Ui}" FontWeight="SemiBold" VerticalContentAlignment="Center" MinWidth="200" HorizontalAlignment="Stretch" VerticalAlignment="Center" Margin="-7,0,4,0"
                                 Text="{Binding EditText, UpdateSourceTrigger=PropertyChanged}"
                                 Visibility="{Binding IsEditing, Converter={StaticResource BoolToVis}}"
                                 IsVisibleChanged="RenameBox_IsVisibleChanged"
@@ -505,7 +507,7 @@
                               </Style>
                             </TextBlock.Style>
                           </TextBlock>
-                          <TextBox Tag="{Binding App}" Height="28" MinHeight="0" Padding="10,0,6,0" VerticalAlignment="Bottom" VerticalContentAlignment="Center" Margin="4,0,4,4" Text="{Binding App.EditText, UpdateSourceTrigger=PropertyChanged}"
+                          <TextBox Tag="{Binding App}" Height="28" MinHeight="0" Padding="6,0,6,0" VerticalAlignment="Bottom" VerticalContentAlignment="Center" Margin="4,0,4,4" Text="{Binding App.EditText, UpdateSourceTrigger=PropertyChanged}"
                                    Visibility="{Binding App.IsEditing, Converter={StaticResource BoolToVis}}"
                                    IsVisibleChanged="RenameBox_IsVisibleChanged"
                                    PreviewKeyDown="RenameBox_KeyDown"
