@@ -310,12 +310,14 @@
       <ColumnDefinition x:Name="TilesColumn" Width="*"/>
     </Grid.ColumnDefinitions>
     <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
       <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
 
     <!-- App list -->
-    <ListBox x:Name="AppList" Grid.Column="1" Grid.Row="0"
+    <ListBox x:Name="AppList" Grid.Column="1" Grid.Row="1"
              ItemsSource="{Binding AppsView}"
              Loaded="AppList_Loaded"
              Background="Transparent" BorderThickness="0" Margin="0,4,4,0"
@@ -440,7 +442,7 @@
     </ListBox>
 
     <!-- Tiles -->
-    <ScrollViewer x:Name="TilesScroll" Grid.Column="2" Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="0" Margin="0,4,0,0"
+    <ScrollViewer x:Name="TilesScroll" Grid.Column="2" Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="0" Margin="0,4,0,0"
                   KeyboardNavigation.DirectionalNavigation="Contained">
       <!-- the old ScrollViewer padding (12,6,4,12) lives here as a margin: padding is outside the scrolled area and clips anything that
            hangs over the content's edge, such as the group-rename box that is pulled left to line its text up with the group name -->
@@ -559,7 +561,7 @@
     </ScrollViewer>
 
     <!-- A-Z jump overlay -->
-    <Grid x:Name="JumpOverlay" Grid.Column="1" Grid.Row="0" Visibility="Collapsed" Background="Transparent" Margin="0,4,4,0">
+    <Grid x:Name="JumpOverlay" Grid.Column="1" Grid.Row="1" Visibility="Collapsed" Background="Transparent" Margin="0,4,4,0">
       <Grid.RowDefinitions>
         <RowDefinition Height="Auto"/>
         <RowDefinition Height="*"/>
@@ -580,7 +582,7 @@
     </Grid>
 
     <!-- Search results page (Windows 11 style: filter chips, grouped results, detail pane) -->
-    <Grid x:Name="SearchPage" Grid.Column="1" Grid.ColumnSpan="2" Grid.Row="0" Visibility="Collapsed" Opacity="0">
+    <Grid x:Name="SearchPage" Grid.Column="1" Grid.ColumnSpan="2" Grid.Row="1" Visibility="Collapsed" Opacity="0">
       <Grid.RenderTransform>
         <TranslateTransform x:Name="SearchSlide"/>
       </Grid.RenderTransform>
@@ -740,8 +742,18 @@
                  Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVis}}"/>
     </Grid>
 
+    <Button x:Name="SectionButton" Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2"
+            HorizontalAlignment="Center" Height="36" Padding="12,0" Visibility="Collapsed"
+            Style="{StaticResource RailButton}" Click="SectionButton_Click">
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+        <TextBlock x:Name="SectionLabel" VerticalAlignment="Center" Foreground="{DynamicResource Brush.TextSecondary}"/>
+        <TextBlock x:Name="SectionGlyph" FontFamily="{StaticResource IconFont}" FontSize="12"
+                   Margin="8,0,0,0" VerticalAlignment="Center" Foreground="{DynamicResource Brush.TextSecondary}"/>
+      </StackPanel>
+    </Button>
+
     <!-- Search -->
-    <Grid Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Margin="12,8,16,12">
+    <Grid Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Margin="12,8,16,12">
       <TextBox x:Name="SearchBox" Style="{StaticResource SearchTextBox}" Height="40" FocusVisualStyle="{x:Null}"
                Tag="Search for apps, settings and documents"
                AutomationProperties.Name="Search apps, settings and files"
@@ -756,7 +768,7 @@
     </Grid>
 
     <!-- Left rail (overlays the content when expanded) -->
-    <Grid x:Name="RailGrid" Grid.Column="0" Grid.RowSpan="2" Grid.ColumnSpan="3" Width="48"
+    <Grid x:Name="RailGrid" Grid.Column="0" Grid.RowSpan="4" Grid.ColumnSpan="3" Width="48"
           HorizontalAlignment="Left" ClipToBounds="True" Panel.ZIndex="10" Background="Transparent">
       <StackPanel VerticalAlignment="Top" Margin="0,2,0,0">
          <Button Style="{StaticResource RailButton}" Tag="top" ToolTip="Expand" Click="Rail_Click"

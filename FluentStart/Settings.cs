@@ -6,7 +6,7 @@ namespace FluentStart;
 public enum ThemeChoice { System, Light, Dark }
 public enum BackdropChoice { Mica, MicaAlt, Acrylic }
 public enum AlignChoice { Left, Center }
-public enum StartViewMode { Both, ListOnly, TilesOnly }
+public enum StartViewMode { Both, ListOnly, TilesOnly, Scroll }
 
 public sealed class Settings
 {
@@ -29,7 +29,7 @@ public sealed class Settings
 
     /// <summary>Tile fill: false = system accent, true = color derived from each app's icon.</summary>
     /// <summary>Mirror the Start Menu folders (expandable folder rows) instead of one flat alphabetical list.</summary>
-    /// <summary>Show the app list and the tiles together, or only one of them (a rail button then switches between the two).</summary>
+    /// <summary>Show the app list and tiles together, in switchable panes, or as vertically navigated sections.</summary>
     public StartViewMode ViewMode { get; set; } = StartViewMode.Both;
 
     /// <summary>Hidden apps (hidden.json) stay out of the list/search unless this is on; they then show dimmed with an "unhide" command.</summary>

@@ -34,7 +34,7 @@ public partial class SettingsWindow : Window
         ThemeBox.ItemsSource = System.Enum.GetValues<ThemeChoice>();
         BackdropBox.ItemsSource = System.Enum.GetValues<BackdropChoice>();
         AlignBox.ItemsSource = System.Enum.GetValues<AlignChoice>();
-        ViewModeBox.ItemsSource = new[] { new ViewModeOption(StartViewMode.Both, "Both"), new ViewModeOption(StartViewMode.TilesOnly, "Tiles"), new ViewModeOption(StartViewMode.ListOnly, "List") };
+        ViewModeBox.ItemsSource = new[] { new ViewModeOption(StartViewMode.ListOnly, "List"), new ViewModeOption(StartViewMode.TilesOnly, "Tiles"), new ViewModeOption(StartViewMode.Both, "Both"), new ViewModeOption(StartViewMode.Scroll, "Scroll") };
         QuickBox.ItemsSource = new[] { 0, 1, 2, 3, 4, 5, 6 };
         // Font sizes: a plain list that always contains the current value, so the box shows it.
         List<double> SizesWith(double current)

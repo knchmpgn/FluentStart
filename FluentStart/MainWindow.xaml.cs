@@ -94,6 +94,7 @@ public partial class MainWindow : Window
         _listScroll = new SmoothScroller(AppList, WheelLinePx);
         _tilesScroll = new SmoothScroller(TilesScroll, WheelLinePx);
         _resultsScroll = new SmoothScroller(ResultsList, WheelLinePx);
+        InitializeScrollModeInput();
         SearchPage.DataContext = _search;
         UserLabel.Text = Environment.UserName;
         var pic = AccountPicture.TryLoad();
@@ -210,7 +211,7 @@ public partial class MainWindow : Window
         ResetSearchUi();
         JumpOverlay.Visibility = Visibility.Collapsed;
         SetRailExpanded(false, animate: false);
-        _showTiles = _settings.ViewMode == StartViewMode.TilesOnly;
+        _showTiles = ScrollMode ? _scrollModeTiles : _settings.ViewMode == StartViewMode.TilesOnly;
         ApplyViewMode(animate: false);
         UpdateRailButtonVisibility();
         PositionWindow();
@@ -237,8 +238,12 @@ public partial class MainWindow : Window
         }));
 
         _model.CollapseAll();   // like the native list, folders start collapsed each time
-        var first = _model.AppsView.Cast<ListRow>().FirstOrDefault();
-        if (first != null) AppList.ScrollIntoView(first);
+        if (ScrollMode) RestoreScrollModeOffset();
+        else
+        {
+            var first = _model.AppsView.Cast<ListRow>().FirstOrDefault();
+            if (first != null) AppList.ScrollIntoView(first);
+        }
 
         // One entrance for the whole surface: fade (Fast) + slide up (Normal), both Fast Out / Slow In.
         Motion.Run(RootGrid, OpacityProperty, 1, Motion.Fast, Motion.Enter, from: 0);
@@ -251,6 +256,8 @@ public partial class MainWindow : Window
     {
         if (_isClosing) return;
         bool wasVisible = IsVisible;
+        if (ScrollMode) SaveScrollModeOffset();
+        CancelScrollModeTransition();
         _isClosing = wasVisible;
         _closeStarted = Stopwatch.GetTimestamp();
         _lastHide = DateTime.UtcNow;
@@ -556,7 +563,7 @@ public partial class MainWindow : Window
             }
 
             case Key.Down when ReferenceEquals(Keyboard.FocusedElement, SearchBox):
-                if (FocusList()) e.Handled = true;
+                if (ScrollMode && _showTiles ? FocusFirstTile() : FocusList()) e.Handled = true;
                 break;
 
             case Key.Right when AppList.IsKeyboardFocusWithin:
@@ -617,6 +624,7 @@ public partial class MainWindow : Window
         if (_appListScrollViewer != null) _appListScrollViewer.ScrollChanged -= AppList_ScrollChanged;
         _appListScrollViewer = FindChild<ScrollViewer>(AppList);
         if (_appListScrollViewer != null) _appListScrollViewer.ScrollChanged += AppList_ScrollChanged;
+        ConfigureScrollModePanning();
         _appListScrollBar = FindChild<ScrollBar>(AppList);
         if (_appListScrollBar != null) _appListScrollBar.Tag = false;
     }
@@ -880,6 +888,7 @@ public partial class MainWindow : Window
         AppList.Visibility = Visibility.Collapsed;
         Motion.Set(JumpOverlay, OpacityProperty, 0);
         JumpOverlay.Visibility = Visibility.Visible;
+        UpdateSectionButton();
         Motion.FadeIn(JumpOverlay);
         e.Handled = true;
     }
@@ -895,6 +904,7 @@ public partial class MainWindow : Window
         {
             JumpOverlay.Visibility = Visibility.Collapsed;
             Motion.Set(JumpOverlay, OpacityProperty, 1);
+            UpdateSectionButton();
         });
     }
 
@@ -1035,13 +1045,17 @@ public partial class MainWindow : Window
 
 
 
-    // ---------- view mode: list + tiles, list only, or tiles only (rail button switches in single-pane modes) ----------
+    // ---------- view mode: list + tiles, single-pane modes, or vertically navigated sections ----------
 
     /// <summary>Re-applies the view-mode setting (called when settings change while the menu is open).</summary>
     public void ApplyViewSettings()
     {
-        _showTiles = _settings.ViewMode == StartViewMode.TilesOnly;
+        if (_appliedScrollMode) SaveScrollModeOffset();
+        bool scrollLayoutChanged = _appliedScrollMode || ScrollMode;
+        if (scrollLayoutChanged) CancelScrollModeTransition();
+        _showTiles = ScrollMode ? _scrollModeTiles : _settings.ViewMode == StartViewMode.TilesOnly;
         ApplyViewMode(animate: false);
+        if (_searchVisible && scrollLayoutChanged) SetPanesOpacity(0);
         UpdateRailButtonVisibility();
         if (IsVisible)
         {
@@ -1061,6 +1075,8 @@ public partial class MainWindow : Window
 
     private void ApplyViewMode(bool animate)
     {
+        _appliedScrollMode = ScrollMode;
+        ConfigureScrollModePanning();
         if (!SinglePane)
         {
             ListColumn.Width = new GridLength(ListWidth);
@@ -1080,10 +1096,11 @@ public partial class MainWindow : Window
             TilesColumn.Width = new GridLength(0);
             Grid.SetColumn(TilesScroll, 1);
             DetailColumn.Width = new GridLength(0);
-            ViewToggleButton.Visibility = Visibility.Visible;
+            ViewToggleButton.Visibility = ScrollMode ? Visibility.Collapsed : Visibility.Visible;
             ShowPane(_showTiles, animate);
         }
         UpdateToggleLabel();
+        UpdateSectionButton();
     }
 
     private void UpdateToggleLabel()
@@ -1094,7 +1111,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Sets pane visibility from the view mode alone: "Both" shows both, "List" only the app list, "Tiles" only the tiles.
+    /// Sets pane visibility from the view mode and active single-pane section.
     /// Called wherever a transition could have been interrupted, so a pane can never be left visible underneath the other
     /// (the tiles drawn over the app list in Tiles-only mode).
     /// </summary>
@@ -1113,6 +1130,11 @@ public partial class MainWindow : Window
 
     private void ShowPane(bool tiles, bool animate)
     {
+        if (ScrollMode)
+        {
+            ShowScrollModePane(tiles, animate);
+            return;
+        }
         CancelAllScroll();
         FrameworkElement show = tiles ? TilesScroll : AppList;
         FrameworkElement hide = tiles ? AppList : TilesScroll;
@@ -1212,6 +1234,8 @@ public partial class MainWindow : Window
         if (show == _searchVisible) return;
         if (show) CancelAllScroll();
         _searchVisible = show;
+        if (show) CancelScrollModeTransition();
+        UpdateSectionButton();
 
         SetSearchExpanded(show);
         EnforcePaneVisibility();
@@ -1336,6 +1360,7 @@ public partial class MainWindow : Window
         SetPanesOpacity(1);
         SetPanesHitTest(true);
         EnforcePaneVisibility();
+        UpdateSectionButton();
         SearchBox.Text = "";
         UpdateSearchChrome();
         _search.QueryChanged("");
