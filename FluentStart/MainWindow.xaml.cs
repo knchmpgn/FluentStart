@@ -313,8 +313,12 @@ public partial class MainWindow : Window
 
     private void Window_Deactivated(object? sender, EventArgs e)
     {
+        if (_suppressHide && Flyout.Root == null && _drag == null && !_modalBusy) _suppressHide = false;
         if (_suppressHide) return;   // a context menu or drag is in progress
         if (IsMouseOverWindow()) return; // don't hide if mouse is still over window
+        
+        // Additional safety: if rail is expanded, collapse it and close
+        if (_railExpanded) SetRailExpanded(false, animate: false);
         HideMenu();
     }
 
@@ -325,10 +329,9 @@ public partial class MainWindow : Window
         // abandoned without clearing it, Start could never be closed by clicking outside.
         if (_suppressHide && Flyout.Root == null && _drag == null && !_modalBusy) _suppressHide = false;
         if (_suppressHide) return;
-        if ((DateTime.UtcNow - _showTime).TotalMilliseconds < 350) return;
         if (Flyout.Root != null) return;   // a context menu is open
 
-        // Fallback for --no-hooks: detect a mouse button held/pressed outside the window.
+        // Detect a mouse button held/pressed outside the window.
         if ((NativeMethods.GetAsyncKeyState(0x01) & 0x8000) != 0)   // VK_LBUTTON
         {
             NativeMethods.GetCursorPos(out var pt);
@@ -346,6 +349,7 @@ public partial class MainWindow : Window
 
     private void Window_LostFocus(object sender, RoutedEventArgs e)
     {
+        if (_suppressHide && Flyout.Root == null && _drag == null && !_modalBusy) _suppressHide = false;
         if (_suppressHide) return;
         if (!IsMouseOverWindow()) HideMenu();
     }
@@ -364,6 +368,7 @@ public partial class MainWindow : Window
     public void HandleGlobalMouseDown(int x, int y)
     {
         if (!IsVisible) return;
+        if (_suppressHide && Flyout.Root == null && _drag == null && !_modalBusy) _suppressHide = false;
         if (_suppressHide) return;
         if (Flyout.Root != null) return;   // let the flyout handle its own dismissal
         NativeMethods.GetWindowRect(_hwnd, out var rc);
@@ -658,14 +663,14 @@ public partial class MainWindow : Window
             }));
             return;
         }
-        if (!r.App.IsEditing) Launch(r.App);
+        if (!r.App.IsEditing) { Launch(r.App); HideMenu(); }
     }
 
     private void Tile_Click(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is not TileModel { App: { } a } tile || a.IsEditing) return;
         if (tile.IsFolderTile) OpenFolderOverlay(tile, (FrameworkElement)sender);   // folder tile: show what is inside
-        else Launch(a);
+        else { Launch(a); HideMenu(); }
     }
 
     private void Result_DragDown(object sender, MouseButtonEventArgs e)

@@ -10,7 +10,7 @@ using System.Windows.Threading;
 
 namespace FluentStart;
 
-public sealed record TileData(string Id, TileSize Size, string? Color = null, string? Name = null, List<string>? Items = null);
+public sealed record TileData(string Id, TileSize Size, string? Color = null, string? Name = null, List<string>? Items = null, int? X = null, int? Y = null, bool Accent = false);
 public sealed record GroupData(string Name, List<TileData> Tiles);
 public sealed record UsageEntry(int Count, DateTime Last);
 public sealed record Bundle(Dictionary<string, string> Renames, List<GroupData> Groups, List<string>? Hidden = null);
@@ -162,6 +162,20 @@ public sealed class StartModel : Observable
         if (Groups.Count == 0) Groups.Add(new TileGroup("Pinned"));
 
         TileColumns = settings.TileColumns;
+        // Migrate tiles that were saved without explicit positions (older files) into a packed layout.
+        foreach (var g in Groups)
+        {
+            if (!g.Tiles.Any(t => t.Column < 0 || t.Row < 0)) continue;
+            var sizes = g.Tiles.Select(t => TilePacker.CellSize(t.Size)).ToList();
+            var positions = TilePacker.Pack(sizes, TileColumns, out _);
+            for (int i = 0; i < g.Tiles.Count && i < positions.Count; i++)
+            {
+                g.Tiles[i].Column = positions[i].X;
+                g.Tiles[i].Row = positions[i].Y;
+            }
+            foreach (var t in g.Tiles) if (t.Column < 0) t.Column = 0;
+            foreach (var t in g.Tiles) if (t.Row < 0) t.Row = 0;
+        }
         UseIconColors = settings.TileColorsFromIcons && !System.Windows.SystemParameters.HighContrast;
         ShowTileNames = settings.ShowTileNames;
 
@@ -435,7 +449,9 @@ public sealed class StartModel : Observable
             {
                 ChildIds = new List<string> { target.AppId, sourceId },
                 FolderName = "Folder",
-                CustomColor = target.CustomColor
+                CustomColor = target.CustomColor,
+                Column = target.Column,
+                Row = target.Row
             };
             group.Tiles[index] = folder;
             created = true;
@@ -455,14 +471,25 @@ public sealed class StartModel : Observable
 
         int index = group.Tiles.IndexOf(folder);
         if (keepAsTile && _byId.TryGetValue(appId, out var app))
-            group.Tiles.Insert(index + 1, new TileModel(appId, TileSize.Medium) { App = app });
+        {
+            var occupied = group.Tiles.Where(t => !ReferenceEquals(t, folder)).Select(t => (t.Column, t.Row, TilePacker.CellSize(t.Size).W, TilePacker.CellSize(t.Size).H)).ToList();
+            var (cx, cy) = TilePacker.FindPosition(occupied, TilePacker.CellSize(TileSize.Medium).W, TilePacker.CellSize(TileSize.Medium).H, TileColumns);
+            group.Tiles.Insert(index + 1, new TileModel(appId, TileSize.Medium) { App = app, Column = cx, Row = cy });
+        }
 
         if (folder.ChildIds.Count < 2)
         {
             index = group.Tiles.IndexOf(folder);
+            var (fc, fr) = (folder.Column, folder.Row);
             group.Tiles.RemoveAt(index);
             if (folder.ChildIds.Count == 1 && _byId.TryGetValue(folder.ChildIds[0], out var last))
-                group.Tiles.Insert(index, new TileModel(last.Id, folder.Size) { App = last, CustomColor = folder.CustomColor });
+            {
+                var occupied = group.Tiles.Select(t => (t.Column, t.Row, TilePacker.CellSize(t.Size).W, TilePacker.CellSize(t.Size).H)).ToList();
+                var (cx, cy) = TilePacker.FindPosition(occupied, TilePacker.CellSize(folder.Size).W, TilePacker.CellSize(folder.Size).H, TileColumns);
+                // prefer original spot if free
+                if (TilePacker.Fits(occupied, fc, fr, TilePacker.CellSize(folder.Size).W, TilePacker.CellSize(folder.Size).H, TileColumns)) { cx = fc; cy = fr; }
+                group.Tiles.Insert(index, new TileModel(last.Id, folder.Size) { App = last, CustomColor = folder.CustomColor, Column = cx, Row = cy });
+            }
         }
         ResolveTiles();
         SaveTilesInternal();
@@ -474,9 +501,18 @@ public sealed class StartModel : Observable
         var group = GroupOf(folder);
         if (group == null || folder.ChildIds == null) return;
         int index = group.Tiles.IndexOf(folder);
+        var (fc, fr) = (folder.Column, folder.Row);
         group.Tiles.RemoveAt(index);
+        int i = 0;
         foreach (var id in folder.ChildIds)
-            if (_byId.TryGetValue(id, out var app)) group.Tiles.Insert(index++, new TileModel(id, TileSize.Medium) { App = app });
+            if (_byId.TryGetValue(id, out var app))
+            {
+                var occupied = group.Tiles.Select(t => (t.Column, t.Row, TilePacker.CellSize(t.Size).W, TilePacker.CellSize(t.Size).H)).ToList();
+                var (cx, cy) = TilePacker.FindPosition(occupied, TilePacker.CellSize(TileSize.Medium).W, TilePacker.CellSize(TileSize.Medium).H, TileColumns);
+                if (i == 0 && TilePacker.Fits(occupied, fc, fr, 2, 2, TileColumns)) { cx = fc; cy = fr; }
+                group.Tiles.Insert(index + i, new TileModel(id, TileSize.Medium) { App = app, Column = cx, Row = cy });
+                i++;
+            }
         ResolveTiles();
         SaveTilesInternal();
     }
@@ -611,7 +647,7 @@ public sealed class StartModel : Observable
 
     public void Pin(AppEntry app) => PinAt(app, Groups[0], int.MaxValue);
 
-    public void PinAt(AppEntry app, TileGroup group, int index)
+    public void PinAt(AppEntry app, TileGroup group, int index, int column = -1, int row = -1)
     {
         if (app.IsFolder) return;
         if (FolderOf(app.Id) is { } holder) RemoveFromFolder(holder, app.Id, keepAsTile: false);   // leaving its folder to become a tile
@@ -619,32 +655,43 @@ public sealed class StartModel : Observable
         {
             var existing = Groups.SelectMany(g => g.Tiles)
                                  .FirstOrDefault(t => string.Equals(t.AppId, app.Id, StringComparison.OrdinalIgnoreCase));
-            if (existing != null) { MoveTile(existing, group, index); return; }
+            if (existing != null)
+            {
+                var occ = group.Tiles.Where(t => !ReferenceEquals(t, existing))
+                                     .Select(t => (t.Column, t.Row, TilePacker.CellSize(t.Size).W, TilePacker.CellSize(t.Size).H)).ToList();
+                var (cx, cy) = (column >= 0 && row >= 0)
+                    ? TilePacker.FindPositionNear(occ, TilePacker.CellSize(existing.Size).W, TilePacker.CellSize(existing.Size).H, TileColumns, column, row)
+                    : TilePacker.FindPosition(occ, TilePacker.CellSize(existing.Size).W, TilePacker.CellSize(existing.Size).H, TileColumns);
+                MoveTile(existing, group, cx, cy);
+                return;
+            }
         }
         index = Math.Clamp(index, 0, group.Tiles.Count);
-        group.Tiles.Insert(index, new TileModel(app.Id, TileSize.Medium) { App = app });
+        var occupied = group.Tiles.Select(t => (t.Column, t.Row, TilePacker.CellSize(t.Size).W, TilePacker.CellSize(t.Size).H)).ToList();
+        var (x, y) = (column >= 0 && row >= 0)
+            ? TilePacker.FindPositionNear(occupied, TilePacker.CellSize(TileSize.Small).W, TilePacker.CellSize(TileSize.Small).H, TileColumns, column, row)
+            : TilePacker.FindPosition(occupied, TilePacker.CellSize(TileSize.Small).W, TilePacker.CellSize(TileSize.Small).H, TileColumns);
+        var tile = new TileModel(app.Id, TileSize.Small) { App = app, Column = x, Row = y };
+        group.Tiles.Insert(index, tile);
         app.IsPinned = true;
         SaveTilesInternal();
     }
 
-    public void MoveTile(TileModel tile, TileGroup target, int index)
+    public void MoveTile(TileModel tile, TileGroup target, int column, int row)
     {
         var src = Groups.FirstOrDefault(g => g.Tiles.Contains(tile));
         if (src == null) return;
-        int old = src.Tiles.IndexOf(tile);
-        index = Math.Clamp(index, 0, target.Tiles.Count);
+        var (w, h) = TilePacker.CellSize(tile.Size);
+        column = Math.Clamp(column, 0, Math.Max(0, TileColumns - w));
+        row = Math.Max(0, row);
 
-        if (ReferenceEquals(src, target))
+        if (!ReferenceEquals(src, target))
         {
-            if (index > old) index--;
-            if (index == old) return;
-            src.Tiles.Move(old, index);
+            src.Tiles.Remove(tile);
+            target.Tiles.Add(tile);
         }
-        else
-        {
-            src.Tiles.RemoveAt(old);
-            target.Tiles.Insert(Math.Clamp(index, 0, target.Tiles.Count), tile);
-        }
+        tile.Column = column;
+        tile.Row = row;
         PruneEmptyGroups();
         SaveTilesInternal();
     }
@@ -700,7 +747,9 @@ public sealed class StartModel : Observable
     public void Resize(TileModel tile, TileSize size) { tile.Size = size; SaveTilesInternal(); }
 
     /// <summary>Sets the tile's background colour ("#RRGGBB"), or null to go back to the default.</summary>
-    public void SetTileColor(TileModel tile, string? hex) { tile.CustomColor = hex; SaveTilesInternal(); }
+    public void SetTileColor(TileModel tile, string? hex) { tile.UseAccent = false; tile.CustomColor = hex; SaveTilesInternal(); }
+
+    public void SetTileAccent(TileModel tile) { tile.CustomColor = null; tile.UseAccent = true; SaveTilesInternal(); }
 
     public void ClearTiles()
     {
@@ -720,11 +769,18 @@ public sealed class StartModel : Observable
         Groups.Select(g => new GroupData(g.Name, g.Tiles.Select(TileToData).ToList())).ToList();
 
     private static TileData TileToData(TileModel t) =>
-        new(t.AppId, t.Size, t.CustomColor, t.IsFolderTile ? t.FolderName : null, t.IsFolderTile ? new List<string>(t.ChildIds!) : null);
+        new(t.AppId, t.Size, t.CustomColor, t.IsFolderTile ? t.FolderName : null, t.IsFolderTile ? new List<string>(t.ChildIds!) : null, t.Column, t.Row, t.UseAccent);
 
-    private static TileModel TileFromData(TileData t) => t.Items == null
-        ? new TileModel(t.Id, t.Size) { CustomColor = t.Color }
-        : new TileModel(t.Id, t.Size) { CustomColor = t.Color, ChildIds = new List<string>(t.Items), FolderName = string.IsNullOrWhiteSpace(t.Name) ? "Folder" : t.Name! };
+    private static TileModel TileFromData(TileData t)
+    {
+        var tile = t.Items == null
+            ? new TileModel(t.Id, t.Size) { CustomColor = t.Color }
+            : new TileModel(t.Id, t.Size) { CustomColor = t.Color, ChildIds = new List<string>(t.Items), FolderName = string.IsNullOrWhiteSpace(t.Name) ? "Folder" : t.Name! };
+        tile.Column = t.X ?? -1;
+        tile.Row = t.Y ?? -1;
+        tile.UseAccent = t.Accent;
+        return tile;
+    }
 
     public void SaveTilesInternal() => Storage.Save("tiles.json", SnapshotGroups());
 

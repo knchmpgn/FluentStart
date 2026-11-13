@@ -55,7 +55,8 @@ public partial class MainWindow
         public TileGroup? TargetGroup;
         public TileGroup? SlotBefore;                 // new group / moved group goes before this group (null = at the end)
         public int Slot = -1;
-        public int Index;
+        public int CellX;
+        public int CellY;
         public bool OverList;
         public bool Settling;
         public long Tick = Stopwatch.GetTimestamp();
@@ -117,6 +118,7 @@ public partial class MainWindow
 
         if (payload is not TileGroup) DimTiles(s);
         if (payload is AppEntry) Motion.Run(source, OpacityProperty, 0.5, Motion.Fast, Motion.Enter);
+        if (payload is TileModel) Motion.Set(source, OpacityProperty, 0);
         if (s.SourceHostInfo != null) Motion.Run(s.SourceHostInfo.Host, OpacityProperty, 0.5, Motion.Fast, Motion.Enter);
 
         s.Bar = new Rectangle { Height = 4, RadiusX = 2, RadiusY = 2, Opacity = 0, IsHitTestVisible = false };
@@ -384,7 +386,28 @@ public partial class MainWindow
         SetHotTile(s, intoTile);
         s.TargetGroup = target;
         s.SlotBefore = before;
-        s.Index = index;
+        s.CellX = 0;
+        s.CellY = 0;
+
+        // Compute the target cell for a tile drop in this group (free-form placement).
+        if (kind == DropKind.Group && panel != null)
+        {
+            var (w, h) = TilePacker.CellSize(panel.DropTileSize);
+            Point pp = Mouse.GetPosition(panel);
+            int cx0 = (int)Math.Floor(pp.X / TilePanel.Cell);
+            int cy0 = (int)Math.Floor(pp.Y / TilePanel.Cell);
+            cx0 = Math.Clamp(cx0, 0, Math.Max(0, panel.Columns - w));
+            cy0 = Math.Max(0, cy0);
+
+            var occupied = new List<(int, int, int, int)>();
+            if (target != null)
+                foreach (var tm in target.Tiles)
+                    if (!ReferenceEquals(tm, s.Payload as TileModel))
+                        occupied.Add((tm.Column, tm.Row, TilePacker.CellSize(tm.Size).W, TilePacker.CellSize(tm.Size).H));
+            var (fx, fy) = TilePacker.FindPositionNear(occupied, w, h, panel.Columns, cx0, cy0);
+            s.CellX = fx;
+            s.CellY = fy;
+        }
 
         // Open (or close) the empty slot among the tiles of the group under the pointer.
         if (!ReferenceEquals(s.Hover, panel))
@@ -395,7 +418,7 @@ public partial class MainWindow
         if (panel != null)
         {
             panel.DropTileSize = s.Payload is TileModel tm ? tm.Size : TileSize.Medium;
-            panel.DropIndex = index;
+            panel.DropIndex = -1;   // free-form placement: no slot opens, tiles stay where they are
         }
 
         ApplySlot(s, slot);
@@ -583,14 +606,14 @@ public partial class MainWindow
         switch (s.Kind)
         {
             case DropKind.Group:
-                if (s.TargetGroup != null) PlaceInGroup(s.Payload, s.TargetGroup, s.Index);
+                if (s.TargetGroup != null) PlaceInGroup(s.Payload, s.TargetGroup, s.CellX, s.CellY);
                 break;
 
             case DropKind.NewGroup:
             {
                 var created = _model.AddGroup("New group");
                 MoveGroupBefore(created, s.SlotBefore);
-                PlaceInGroup(s.Payload, created, 0);
+                PlaceInGroup(s.Payload, created, 0, 0);
                 _model.PruneEmptyGroups();
                 BeginGroupRename(created);   // name the new group right away, like Windows
                 break;
@@ -618,10 +641,10 @@ public partial class MainWindow
         }
     }
 
-    private void PlaceInGroup(object payload, TileGroup group, int index)
+    private void PlaceInGroup(object payload, TileGroup group, int column, int row)
     {
-        if (payload is TileModel tile) _model.MoveTile(tile, group, index);
-        else if (payload is AppEntry app) _model.PinAt(app, group, index);
+        if (payload is TileModel tile) _model.MoveTile(tile, group, column, row);
+        else if (payload is AppEntry app) _model.PinAt(app, group, int.MaxValue, column, row);
     }
 
     /// <summary>Moves <paramref name="group"/> so it sits directly before <paramref name="before"/> (null = last).</summary>

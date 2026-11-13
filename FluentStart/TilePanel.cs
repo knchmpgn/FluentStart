@@ -94,7 +94,10 @@ public sealed class TilePanel : Panel
 
     private void TilePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(TileModel.IsResolved) || e.PropertyName == nameof(TileModel.App))
+        if (e.PropertyName == nameof(TileModel.IsResolved) || e.PropertyName == nameof(TileModel.App)
+            || e.PropertyName == nameof(TileModel.Size) || e.PropertyName == nameof(TileModel.Width)
+            || e.PropertyName == nameof(TileModel.Height) || e.PropertyName == nameof(TileModel.Column)
+            || e.PropertyName == nameof(TileModel.Row))
             InvalidateMeasure();
     }
 
@@ -116,55 +119,30 @@ public sealed class TilePanel : Panel
             _sizes[i] = models[i] is { IsResolved: true } ? TilePacker.CellSize(models[i]!.Size) : (0, 0);
         }
 
-        int draggedIdx = -1;
-        var dragged = DraggedTile;
-        if (dragged != null)
-        {
-            for (int i = 0; i < n; i++) if (ReferenceEquals(models[i], dragged)) { draggedIdx = i; break; }
-            if (draggedIdx >= 0) _sizes[draggedIdx] = (0, 0);   // lifted out of the flow
-        }
-
         _gap = Rect.Empty;
-        _basePos = TilePacker.Pack(_sizes, Columns, out int baseRows);
-        _rows = baseRows;
-        int target = DropIndex;
-        if (target < 0)
-        {
-            _pos = _basePos;
-            return;
-        }
-
-        // Reserve an open slot of the dropped tile's size at the target position.
-        var (dw, dh) = TilePacker.CellSize(DropTileSize);
-        var nonDragged = new List<int>(n);
-        for (int i = 0; i < n; i++) if (i != draggedIdx) nonDragged.Add(i);
-        int nonCount = nonDragged.Count;
-        int targetNon = draggedIdx >= 0 && target > draggedIdx ? target - 1 : target;
-        targetNon = Math.Clamp(targetNon, 0, nonCount);
-
-        var virtualSizes = new List<(int W, int H)>(nonCount + 1);
-        var childToVirtual = new int[n];
-        for (int i = 0; i < n; i++) childToVirtual[i] = -1;
-        int gapIndex = -1;
-        for (int k = 0; k < nonCount; k++)
-        {
-            if (k == targetNon) { gapIndex = virtualSizes.Count; virtualSizes.Add((dw, dh)); }
-            int childIdx = nonDragged[k];
-            childToVirtual[childIdx] = virtualSizes.Count;
-            virtualSizes.Add(_sizes[childIdx]);
-        }
-        if (gapIndex < 0) { gapIndex = virtualSizes.Count; virtualSizes.Add((dw, dh)); }
-
-        var virtualPos = TilePacker.Pack(virtualSizes, Columns, out _rows);
-        var gp = virtualPos[gapIndex];
-        _gap = new Rect(gp.X * Cell, gp.Y * Cell, Math.Min(dw, Math.Max(1, Columns)) * Cell, dh * Cell);
-
         _pos = new List<CellPos>(n);
+        _basePos = new List<CellPos>(n);
+        int maxRow = 0;
         for (int i = 0; i < n; i++)
         {
-            int vi = childToVirtual[i];
-            _pos.Add(vi >= 0 && vi < virtualPos.Count ? virtualPos[vi] : new CellPos(0, 0));
+            var (w, h) = _sizes[i];
+            if (w <= 0 || h <= 0)
+            {
+                _pos.Add(new CellPos(0, 0));
+                _basePos.Add(new CellPos(0, 0));
+                continue;
+            }
+            var m = models[i];
+            int x = m != null ? m.Column : 0;
+            int y = m != null ? m.Row : 0;
+            if (x < 0) x = 0;
+            if (y < 0) y = 0;
+            x = Math.Clamp(x, 0, Math.Max(0, Columns - w));
+            _pos.Add(new CellPos(x, y));
+            _basePos.Add(new CellPos(x, y));
+            maxRow = Math.Max(maxRow, y + h);
         }
+        _rows = Math.Max(1, maxRow);
     }
 
     private int _rows;

@@ -47,6 +47,71 @@ public static class TilePacker
         return result;
     }
 
+    /// <summary>
+    /// Returns whether a <paramref name="w"/>x<paramref name="h"/> rectangle at (<paramref name="x"/>,<paramref name="y"/>)
+    /// fits in a grid of <paramref name="columns"/> without overlapping any of <paramref name="existing"/>.
+    /// </summary>
+    public static bool Fits(IReadOnlyList<(int X, int Y, int W, int H)> existing, int x, int y, int w, int h, int columns)
+    {
+        if (columns < 1) columns = 1;
+        if (x < 0 || y < 0 || w < 1 || h < 1) return false;
+        if (x + w > columns) return false;
+        foreach (var e in existing)
+        {
+            if (x < e.X + e.W && x + w > e.X && y < e.Y + e.H && y + h > e.Y)
+                return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Finds the first empty cell (scanning top-to-bottom, left-to-right) for a <paramref name="w"/>x<paramref name="h"/> tile.
+    /// </summary>
+    public static (int X, int Y) FindPosition(IReadOnlyList<(int X, int Y, int W, int H)> existing, int w, int h, int columns)
+    {
+        if (columns < 1) columns = 1;
+        w = Math.Max(1, Math.Min(w, columns));
+        h = Math.Max(1, h);
+        int maxY = 0;
+        foreach (var e in existing) maxY = Math.Max(maxY, e.Y + e.H);
+        for (int y = 0; y <= maxY + h; y++)
+            for (int x = 0; x <= columns - w; x++)
+                if (Fits(existing, x, y, w, h, columns)) return (x, y);
+        return (0, maxY);
+    }
+
+    /// <summary>
+    /// Finds an empty cell as close as possible to (<paramref name="targetX"/>,<paramref name="targetY"/>).
+    /// </summary>
+    public static (int X, int Y) FindPositionNear(IReadOnlyList<(int X, int Y, int W, int H)> existing, int w, int h, int columns, int targetX, int targetY)
+    {
+        if (columns < 1) columns = 1;
+        w = Math.Max(1, Math.Min(w, columns));
+        h = Math.Max(1, h);
+        targetX = Math.Clamp(targetX, 0, Math.Max(0, columns - w));
+        targetY = Math.Max(0, targetY);
+        // radius 0 first
+        if (Fits(existing, targetX, targetY, w, h, columns)) return (targetX, targetY);
+        for (int radius = 1; radius <= 24; radius++)
+        {
+            for (int dy = -radius; dy <= radius; dy++)
+            {
+                for (int dx = -radius; dx <= radius; dx++)
+                {
+                    if (Math.Max(Math.Abs(dx), Math.Abs(dy)) != radius) continue;
+                    int x = targetX + dx;
+                    int y = targetY + dy;
+                    if (x < 0 || y < 0 || x + w > columns) continue;
+                    if (Fits(existing, x, y, w, h, columns)) return (x, y);
+                }
+            }
+        }
+        // fallback: stack below everything
+        int maxY = 0;
+        foreach (var e in existing) maxY = Math.Max(maxY, e.Y + e.H);
+        return (0, maxY);
+    }
+
     private static bool Fits(List<bool[]> occ, int x, int y, int w, int h)
     {
         for (int yy = y; yy < y + h && yy < occ.Count; yy++)

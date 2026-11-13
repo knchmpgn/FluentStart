@@ -223,6 +223,8 @@ public sealed class TileModel : Observable
 {
     private AppEntry? _app;
     private TileSize _size;
+    private int _column;
+    private int _row;
 
     public TileModel(string appId, TileSize size) { AppId = appId; _size = size; }
 
@@ -241,6 +243,7 @@ public sealed class TileModel : Observable
     public bool IsResolved => _app != null;
 
     private string? _customColor;
+    private bool _useAccent;
 
     /// <summary>User-chosen tile background as "#RRGGBB", or null for the default (system accent / icon colour).</summary>
     public string? CustomColor
@@ -249,10 +252,23 @@ public sealed class TileModel : Observable
         set
         {
             if (!Set(ref _customColor, TileColors.Normalize(value))) return;
-            Raise(nameof(HasCustomColor)); Raise(nameof(TileBackground)); Raise(nameof(LabelBrush));
+            if (_customColor != null) _useAccent = false;
+            Raise(nameof(HasCustomColor)); Raise(nameof(TileBackground)); Raise(nameof(LabelBrush)); Raise(nameof(UseAccent));
         }
     }
     public bool HasCustomColor => _customColor != null;
+
+    /// <summary>When true, the tile uses the live system accent colour as its background.</summary>
+    public bool UseAccent
+    {
+        get => _useAccent;
+        set
+        {
+            if (!Set(ref _useAccent, value)) return;
+            if (value) { _customColor = null; Raise(nameof(HasCustomColor)); Raise(nameof(TileBackground)); }
+            Raise(nameof(LabelBrush));
+        }
+    }
     public Brush? TileBackground => TileColors.BrushOf(_customColor);
     /// <summary>Label colour that stays readable on <see cref="TileBackground"/>.</summary>
     public Brush LabelBrush => TileColors.LabelOn(_customColor);
@@ -265,6 +281,20 @@ public sealed class TileModel : Observable
             if (!Set(ref _size, value)) return;
             Raise(nameof(Width)); Raise(nameof(Height)); Raise(nameof(IconSize)); Raise(nameof(ShowLabel)); Raise(nameof(LabelHidden));
         }
+    }
+
+    /// <summary>Grid column (in small cells) where this tile is placed.</summary>
+    public int Column
+    {
+        get => _column;
+        set => Set(ref _column, value);
+    }
+
+    /// <summary>Grid row (in small cells) where this tile is placed.</summary>
+    public int Row
+    {
+        get => _row;
+        set => Set(ref _row, value);
     }
 
     /// <summary>The "Show app names on tiles" setting (set by <see cref="StartModel.ShowTileNames"/>).</summary>

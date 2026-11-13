@@ -165,7 +165,8 @@ public partial class MainWindow
         {
             new() { Swatches = swatches, SelectedColor = TileColors.TryParse(tile.CustomColor), SwatchChosen = c => _model.SetTileColor(tile, TileColors.ToHex(c)) },
             FlyoutItem.Separator(),
-            new() { Text = "Custom", Glyph = "\uE790", Click = () => PickCustomTileColor(tile) }
+            new() { Text = "Accent", Glyph = "\uEC34", IsChecked = tile.UseAccent, Click = () => _model.SetTileAccent(tile) },
+            new() { Text = "Custom", Glyph = "\uEF3C", Click = () => PickCustomTileColor(tile) }
         };
         if (tile.HasCustomColor)
             children.Add(new FlyoutItem { Text = "Default", Glyph = "\uE777", Click = () => _model.SetTileColor(tile, null) });
