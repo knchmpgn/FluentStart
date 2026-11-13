@@ -112,6 +112,70 @@ public static class TilePacker
         return (0, maxY);
     }
 
+    /// <summary>Reserves a drop rectangle and moves obstructing tiles forward, preserving other positions where possible.</summary>
+    public static List<CellPos> PreviewDrop(
+        IReadOnlyList<(int X, int Y, int W, int H)> tiles, int columns, CellPos drop, int dropWidth, int dropHeight,
+        CellPos? vacated = null, int vacatedWidth = 0, int vacatedHeight = 0)
+    {
+        columns = Math.Max(1, columns);
+        dropWidth = Math.Clamp(dropWidth, 1, columns);
+        dropHeight = Math.Max(1, dropHeight);
+        var occupied = new List<(int X, int Y, int W, int H)> { (drop.X, drop.Y, dropWidth, dropHeight) };
+        var positions = new CellPos[tiles.Count];
+        var order = new List<int>(tiles.Count);
+        for (int i = 0; i < tiles.Count; i++) order.Add(i);
+        order.Sort((a, b) =>
+        {
+            int row = tiles[a].Y.CompareTo(tiles[b].Y);
+            if (row != 0) return row;
+            int column = tiles[a].X.CompareTo(tiles[b].X);
+            return column != 0 ? column : a.CompareTo(b);
+        });
+
+        foreach (int i in order)
+        {
+            var tile = tiles[i];
+            int w = Math.Clamp(tile.W, 1, columns);
+            int h = Math.Max(1, tile.H);
+            int x = Math.Clamp(tile.X, 0, columns - w);
+            int y = Math.Max(0, tile.Y);
+            if (!Fits(occupied, x, y, w, h, columns))
+            {
+                bool found = false;
+                if (vacated is { } hole)
+                {
+                    for (int holeY = hole.Y; holeY <= hole.Y + vacatedHeight - h && !found; holeY++)
+                        for (int holeX = hole.X; holeX <= hole.X + vacatedWidth - w; holeX++)
+                        {
+                            if (!Fits(occupied, holeX, holeY, w, h, columns)) continue;
+                            x = holeX;
+                            y = holeY;
+                            found = true;
+                            break;
+                        }
+                }
+                if (!found)
+                {
+                    int startX = x;
+                    for (;; y++, startX = 0)
+                    {
+                        for (int nextX = startX; nextX <= columns - w; nextX++)
+                        {
+                            if (!Fits(occupied, nextX, y, w, h, columns)) continue;
+                            x = nextX;
+                            found = true;
+                            break;
+                        }
+                        if (found) break;
+                    }
+                }
+            }
+            positions[i] = new CellPos(x, y);
+            occupied.Add((x, y, w, h));
+        }
+        return new List<CellPos>(positions);
+    }
+
     private static bool Fits(List<bool[]> occ, int x, int y, int w, int h)
     {
         for (int yy = y; yy < y + h && yy < occ.Count; yy++)

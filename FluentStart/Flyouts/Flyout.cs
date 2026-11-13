@@ -107,7 +107,8 @@ internal sealed class FlyoutWindow : Window
         _placement = placement;
 
         WindowStyle = WindowStyle.None;
-        ResizeMode = ResizeMode.NoResize;
+        // DWM needs the resize frame for Mica; WindowChrome's zero resize border prevents resizing the menu.
+        ResizeMode = ResizeMode.CanResize;
         ShowInTaskbar = false;
         Topmost = true;
         Background = Brushes.Transparent;

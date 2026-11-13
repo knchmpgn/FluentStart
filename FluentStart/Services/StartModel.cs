@@ -720,7 +720,8 @@ public sealed class StartModel : Observable
             if (t.App != null) t.App.IsPinned = false;
             group.Tiles.Remove(t);
         }
-        if (!ReferenceEquals(group, Groups[0])) Groups.Remove(group);
+        if (Groups.Count == 1) Groups.Add(new TileGroup("Pinned"));
+        Groups.Remove(group);
         ResolveTiles();
         SaveTilesInternal();
     }

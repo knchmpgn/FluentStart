@@ -22,40 +22,15 @@ public sealed class TilePanel : Panel
         set => SetValue(ColumnsProperty, value);
     }
 
-    public static readonly DependencyProperty DropIndexProperty = DependencyProperty.Register(
-        nameof(DropIndex), typeof(int), typeof(TilePanel),
-        new FrameworkPropertyMetadata(-1, FrameworkPropertyMetadataOptions.AffectsMeasure | FrameworkPropertyMetadataOptions.AffectsArrange | FrameworkPropertyMetadataOptions.AffectsRender));
-
     public static readonly DependencyProperty DraggedTileProperty = DependencyProperty.Register(
         nameof(DraggedTile), typeof(TileModel), typeof(TilePanel),
         new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsMeasure));
 
-    public static readonly DependencyProperty DropTileSizeProperty = DependencyProperty.Register(
-        nameof(DropTileSize), typeof(TileSize), typeof(TilePanel),
-        new FrameworkPropertyMetadata(TileSize.Medium, FrameworkPropertyMetadataOptions.AffectsMeasure));
-
-    /// <summary>The tile being dragged out of this panel: it leaves the flow so the others close the gap.</summary>
+    /// <summary>The tile being dragged; it is excluded from the drop preview.</summary>
     public TileModel? DraggedTile
     {
         get => (TileModel?)GetValue(DraggedTileProperty);
         set => SetValue(DraggedTileProperty, value);
-    }
-
-    /// <summary>
-    /// Insertion index (into the child order) at which an open slot is reserved while something is dragged over this panel;
-    /// -1 = no slot. The tiles after it slide away to make room and a placeholder is drawn in the slot.
-    /// </summary>
-    public int DropIndex
-    {
-        get => (int)GetValue(DropIndexProperty);
-        set => SetValue(DropIndexProperty, value);
-    }
-
-    /// <summary>Size of the slot reserved at <see cref="DropIndex"/> (the size of the tile being dropped).</summary>
-    public TileSize DropTileSize
-    {
-        get => (TileSize)GetValue(DropTileSizeProperty);
-        set => SetValue(DropTileSizeProperty, value);
     }
 
     /// <summary>When true, tiles that change position glide to their new slot (Fluent "reposition") instead of jumping.</summary>
@@ -68,7 +43,21 @@ public sealed class TilePanel : Panel
     private List<CellPos> _basePos = new();   // layout without the reserved slot: stable, so hit-testing cannot feed back on itself
     private (int W, int H)[] _sizes = Array.Empty<(int, int)>();
     private Rect _gap = Rect.Empty;
+    private CellPos? _dropCell;
+    private TileSize _dropSize;
+    private readonly Dictionary<TileModel, CellPos> _previewPositions = new();
     private readonly Dictionary<UIElement, Point> _last = new();
+
+    internal IReadOnlyDictionary<TileModel, CellPos> PreviewPositions => _previewPositions;
+
+    internal void SetDropTarget(CellPos? cell, TileSize size)
+    {
+        if (_dropCell == cell && _dropSize == size) return;
+        _dropCell = cell;
+        _dropSize = size;
+        InvalidateMeasure();
+        InvalidateVisual();
+    }
 
     protected override void OnVisualChildrenChanged(DependencyObject visualAdded, DependencyObject visualRemoved)
     {
@@ -120,9 +109,47 @@ public sealed class TilePanel : Panel
         }
 
         _gap = Rect.Empty;
+        _previewPositions.Clear();
         _pos = new List<CellPos>(n);
         _basePos = new List<CellPos>(n);
         int maxRow = 0;
+        var previewTiles = new List<(int X, int Y, int W, int H)>();
+        var previewIndices = new List<int>();
+        CellPos? vacated = null;
+        int vacatedWidth = 0, vacatedHeight = 0;
+        if (_dropCell is { } drop)
+        {
+            var (dropW, dropH) = TilePacker.CellSize(_dropSize);
+            _gap = new Rect(drop.X * Cell, drop.Y * Cell, Math.Min(dropW, Math.Max(1, Columns)) * Cell, dropH * Cell);
+            maxRow = drop.Y + dropH;
+            for (int i = 0; i < n; i++)
+            {
+                var model = models[i];
+                if (model == null) continue;
+                if (ReferenceEquals(model, DraggedTile))
+                {
+                    (vacatedWidth, vacatedHeight) = TilePacker.CellSize(model.Size);
+                    vacated = new CellPos(Math.Clamp(model.Column, 0, Math.Max(0, Columns - vacatedWidth)), Math.Max(0, model.Row));
+                    continue;
+                }
+                var (w, h) = TilePacker.CellSize(model.Size);
+                previewTiles.Add((model.Column, model.Row, w, h));
+                previewIndices.Add(i);
+            }
+        }
+        var planned = _dropCell is { } target
+            ? TilePacker.PreviewDrop(previewTiles, Columns, target, TilePacker.CellSize(_dropSize).W, TilePacker.CellSize(_dropSize).H,
+                vacated, vacatedWidth, vacatedHeight)
+            : null;
+        var previewByIndex = new Dictionary<int, CellPos>();
+        if (planned != null)
+            for (int i = 0; i < planned.Count; i++)
+            {
+                int index = previewIndices[i];
+                previewByIndex[index] = planned[i];
+                _previewPositions[models[index]!] = planned[i];
+            }
+
         for (int i = 0; i < n; i++)
         {
             var (w, h) = _sizes[i];
@@ -138,8 +165,9 @@ public sealed class TilePanel : Panel
             if (x < 0) x = 0;
             if (y < 0) y = 0;
             x = Math.Clamp(x, 0, Math.Max(0, Columns - w));
-            _pos.Add(new CellPos(x, y));
             _basePos.Add(new CellPos(x, y));
+            if (previewByIndex.TryGetValue(i, out var preview)) { x = preview.X; y = preview.Y; }
+            _pos.Add(new CellPos(x, y));
             maxRow = Math.Max(maxRow, y + h);
         }
         _rows = Math.Max(1, maxRow);
@@ -156,6 +184,20 @@ public sealed class TilePanel : Panel
             InternalChildren[i].Measure(new Size(w * Cell, h * Cell));
         }
         return new Size(Math.Max(1, Columns) * Cell, _rows * Cell);
+    }
+
+    protected override void OnRender(DrawingContext dc)
+    {
+        base.OnRender(dc);
+        if (_gap.IsEmpty) return;
+        var brush = TryFindResource("Brush.Accent") as Brush ?? SystemColors.HighlightBrush;
+        var rect = new Rect(_gap.X + 2, _gap.Y + 2, Math.Max(0, _gap.Width - 4), Math.Max(0, _gap.Height - 4));
+        dc.PushOpacity(0.18);
+        dc.DrawRoundedRectangle(brush, null, rect, 8, 8);
+        dc.Pop();
+        dc.PushOpacity(0.7);
+        dc.DrawRoundedRectangle(null, new Pen(brush, 1.5), rect, 8, 8);
+        dc.Pop();
     }
 
     protected override Size ArrangeOverride(Size finalSize)
@@ -206,24 +248,4 @@ public sealed class TilePanel : Panel
         return null;
     }
 
-    /// <summary>
-    /// Insertion index (into the child order) for a drop at <paramref name="p"/> (panel coordinates). Measured against the layout
-    /// WITHOUT the reserved slot, so the answer does not change just because tiles slid out of the way.
-    /// </summary>
-    public int InsertionIndexAt(Point p)
-    {
-        if (_basePos.Count != InternalChildren.Count) Recompute();
-        int best = -1;
-        double bestDist = double.MaxValue, bestCx = 0;
-        for (int i = 0; i < _sizes.Length; i++)
-        {
-            var (w, h) = _sizes[i];
-            if (w == 0) continue;
-            double cx = (_basePos[i].X + w / 2.0) * Cell, cy = (_basePos[i].Y + h / 2.0) * Cell;
-            double d = (cx - p.X) * (cx - p.X) + (cy - p.Y) * (cy - p.Y);
-            if (d < bestDist) { bestDist = d; best = i; bestCx = cx; }
-        }
-        if (best < 0) return InternalChildren.Count;
-        return p.X > bestCx ? best + 1 : best;
-    }
 }

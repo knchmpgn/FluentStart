@@ -3,6 +3,11 @@
   <SolidColorBrush x:Key="Brush.Text" Color="#FF1A1A1A"/>
   <SolidColorBrush x:Key="Brush.TextSecondary" Color="#99000000"/>
   <SolidColorBrush x:Key="Brush.Hover" Color="#14000000"/>
+  <LinearGradientBrush x:Key="Brush.TileHover" StartPoint="0,0" EndPoint="1,1">
+    <GradientStop Color="#99FFFFFF" Offset="0"/>
+    <GradientStop Color="#66FFFFFF" Offset="0.5"/>
+    <GradientStop Color="#33FFFFFF" Offset="1"/>
+  </LinearGradientBrush>
   <SolidColorBrush x:Key="Brush.Pressed" Color="#0A000000"/>
   <SolidColorBrush x:Key="Brush.Overlay" Color="#F2F3F3F3"/>
   <SolidColorBrush x:Key="Brush.Stroke" Color="#1A000000"/>

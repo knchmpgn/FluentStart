@@ -2,7 +2,6 @@ using System;
 
 using System.Collections;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 
 
@@ -80,7 +79,7 @@ public sealed class SearchPageModel : Observable
         LoadCustomCommands();
     }
 
-    public ObservableCollection<SearchResult> Results { get; } = new();
+    public RangeObservableCollection<SearchResult> Results { get; } = new();
     public ICollectionView ResultsView { get; }
 
     public bool IsActive => !string.IsNullOrWhiteSpace(_query);
@@ -105,7 +104,8 @@ public sealed class SearchPageModel : Observable
 
     private async Task LoadPreviewAsync(SearchResult? r, CancellationToken cancellationToken = default)
     {
-        if (r == null || string.IsNullOrEmpty(r.Path) || !File.Exists(r.Path)) { r.PreviewText = null; r.PreviewImage = null; r.PreviewMedia = null; r.PreviewWebView = null; return; }
+        if (r == null) return;
+        if (string.IsNullOrEmpty(r.Path) || !File.Exists(r.Path)) { r.PreviewText = null; r.PreviewImage = null; r.PreviewMedia = null; r.PreviewWebView = null; return; }
         var ext = Path.GetExtension(r.Path).ToLowerInvariant();
         r.IsLoadingPreview = true;
         try
@@ -490,11 +490,7 @@ public sealed class SearchPageModel : Observable
         }
 
         string? keepTitle = _selected?.Title, keepPath = _selected?.Path;
-        using (ResultsView.DeferRefresh())
-        {
-            Results.Clear();
-            foreach (var r in ordered) Results.Add(r);
-        }
+        Results.ReplaceAll(ordered);
 
         Selected = ordered.FirstOrDefault(r => r.Title == keepTitle && r.Path == keepPath)
                    ?? ResultsView.Cast<SearchResult>().FirstOrDefault();

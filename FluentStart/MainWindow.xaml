@@ -11,7 +11,7 @@
         UseLayoutRounding="True" SnapsToDevicePixels="True"
         Deactivated="Window_Deactivated" PreviewKeyDown="Window_PreviewKeyDown"
         PreviewTextInput="Window_PreviewTextInput" PreviewMouseDown="Window_PreviewMouseDown"
-        Closing="Window_Closing" LostFocus="Window_LostFocus">
+        Closing="Window_Closing">
 
   <shell:WindowChrome.WindowChrome>
     <shell:WindowChrome CaptionHeight="0" GlassFrameThickness="-1" ResizeBorderThickness="6"
@@ -166,19 +166,47 @@
 
     <Style x:Key="TileButton" TargetType="Button">
       <Setter Property="Background" Value="{DynamicResource Brush.AccentTile}"/>
+      <EventSetter Event="PreviewMouseLeftButtonDown" Handler="Tile_ResetKeyboardFocus"/>
+      <Setter Property="FocusVisualStyle">
+        <Setter.Value>
+          <Style TargetType="Control">
+            <Setter Property="Template">
+              <Setter.Value>
+                <ControlTemplate TargetType="Control">
+                  <Border x:Name="KeyboardFocusRing" Margin="3" CornerRadius="5" BorderThickness="1"
+                          BorderBrush="{DynamicResource {x:Static SystemColors.WindowBrushKey}}" IsHitTestVisible="False">
+                    <Border CornerRadius="4" BorderThickness="1"
+                            BorderBrush="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
+                  </Border>
+                </ControlTemplate>
+              </Setter.Value>
+            </Setter>
+          </Style>
+        </Setter.Value>
+      </Setter>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-                <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="8"
-                        BorderThickness="2" BorderBrush="Transparent">
-                  <ContentPresenter/>
-                </Border>
+                <Grid>
+                  <Border Background="{TemplateBinding Background}" CornerRadius="8"/>
+                  <Border x:Name="Bd" CornerRadius="8" BorderThickness="2" BorderBrush="Transparent"/>
+                  <ContentPresenter Margin="2"/>
+                  <Grid x:Name="HoverOverlay" Visibility="Collapsed" IsHitTestVisible="False" ClipToBounds="True">
+                    <Border CornerRadius="8" BorderThickness="3" BorderBrush="#66000000"/>
+                    <Border x:Name="HoverBorder" Margin="1" CornerRadius="7" BorderThickness="2"
+                            BorderBrush="{DynamicResource Brush.TileHover}"/>
+                  </Grid>
+                </Grid>
               <ControlTemplate.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                  <Setter TargetName="Bd" Property="BorderThickness" Value="3"/>
-                  <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource Brush.Accent}"/>
-                </Trigger>
+                <MultiTrigger>
+                  <MultiTrigger.Conditions>
+                    <Condition Property="IsMouseOver" Value="True"/>
+                    <Condition Property="IsEnabled" Value="True"/>
+                  </MultiTrigger.Conditions>
+                  <Setter TargetName="HoverOverlay" Property="Visibility" Value="Visible"/>
+                </MultiTrigger>
                 <Trigger Property="IsPressed" Value="True">
+                  <Setter TargetName="HoverOverlay" Property="Visibility" Value="Collapsed"/>
                   <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource Brush.Pressed}"/>
                 </Trigger>
              </ControlTemplate.Triggers>
@@ -430,8 +458,9 @@
                      </Style.Triggers>
                    </Style>
                  </StackPanel.Style>
-                   <Border Margin="0,6,6,2" Padding="0,0,10,0" MinHeight="32" CornerRadius="6" Background="Transparent"
-                           MouseLeftButtonDown="GroupHeader_MouseDown" MouseMove="GroupHeader_Move">
+                   <Border Tag="TileGroupHeader" Margin="0,6,6,2" Padding="0,0,10,0" MinHeight="32" CornerRadius="6" Background="Transparent"
+                           MouseLeftButtonDown="GroupHeader_MouseDown" MouseMove="GroupHeader_Move"
+                           MouseRightButtonUp="GroupHeader_RightClick">
                      <Grid>
                        <Border HorizontalAlignment="Right" VerticalAlignment="Center" Width="28" Height="22" Background="Transparent"
                                ToolTip="Drag to move this group"

@@ -32,6 +32,7 @@ public partial class MainWindow
         public StackPanel Host = null!;
         public TileGroup Group = null!;
         public TranslateTransform Shift = null!;
+        public double InitialHeight;
     }
 
     private sealed class DragSession
@@ -50,6 +51,12 @@ public partial class MainWindow
         public List<(UIElement Child, ScaleTransform? Scale, TileModel? Model)> Dimmed = new();
         public TileModel? TargetTile;                 // drop-into-tile (makes / fills a folder)
         public TileModel? HotTile;
+        public TileModel? FolderCandidate;
+        public long FolderCandidateSince;
+        public TileModel? DraggedTile;
+        public TileSize DropSize;
+        public UIElement? HiddenTile;
+        public Dictionary<TileModel, CellPos>? Placement;
         public TilePanel? Hover;
         public DropKind Kind;
         public TileGroup? TargetGroup;
@@ -63,6 +70,7 @@ public partial class MainWindow
     }
 
     private DragSession? _drag;
+    private Action? _pendingDragCleanup;
 
     // ---------- starting a drag ----------
 
@@ -88,6 +96,7 @@ public partial class MainWindow
     {
         _dragCandidate = null;
         if (_drag != null) return;
+        _pendingDragCleanup?.Invoke();
         ReleaseTilePress(instant: true);   // the press effect ends the moment a drag starts
         if (payload is AppEntry && !TilesScroll.IsVisible) return;          // nothing to drop an app onto
         if (!Mouse.Capture(RootGrid, CaptureMode.Element)) return;
@@ -96,7 +105,23 @@ public partial class MainWindow
         _tilesScroll?.Cancel();
         _resultsScroll?.Cancel();
 
-        var s = new DragSession { Payload = payload, Source = source, ScrollAtStart = TilesScroll.VerticalOffset };
+        TileModel? draggedTile = payload as TileModel;
+        if (payload is AppEntry app)
+            foreach (var group in _model.Groups)
+            {
+                foreach (var tile in group.Tiles)
+                    if (!tile.IsFolderTile && string.Equals(tile.AppId, app.Id, StringComparison.OrdinalIgnoreCase))
+                    {
+                        draggedTile = tile;
+                        break;
+                    }
+                if (draggedTile != null) break;
+            }
+        var s = new DragSession
+        {
+            Payload = payload, Source = source, ScrollAtStart = TilesScroll.VerticalOffset,
+            DraggedTile = draggedTile, DropSize = draggedTile?.Size ?? TileSize.Small
+        };
         _drag = s;
         _suppressHide = true;
         Mouse.OverrideCursor = Cursors.Arrow;
@@ -110,15 +135,23 @@ public partial class MainWindow
         foreach (var p in s.Panels)
         {
             p.AnimateLayout = true;
-            if (payload is TileModel tm) p.DraggedTile = tm;
+            p.DraggedTile = draggedTile;
             if (FindAncestorWhere(p, d => d is StackPanel { Tag: "TileGroupHost" }) is StackPanel host && host.DataContext is TileGroup g)
-                s.Hosts.Add(new GroupHost { Host = host, Group = g, Shift = Motion.EnsureTranslate(host) });
+                s.Hosts.Add(new GroupHost { Host = host, Group = g, Shift = Motion.EnsureTranslate(host), InitialHeight = host.ActualHeight });
         }
         if (payload is TileGroup moving) s.SourceHostInfo = s.Hosts.Find(h => ReferenceEquals(h.Group, moving));
 
         if (payload is not TileGroup) DimTiles(s);
         if (payload is AppEntry) Motion.Run(source, OpacityProperty, 0.5, Motion.Fast, Motion.Enter);
         if (payload is TileModel) Motion.Set(source, OpacityProperty, 0);
+        if (payload is AppEntry && draggedTile != null)
+            foreach (var panel in s.Panels)
+                foreach (UIElement child in panel.Children)
+                    if (child is ContentPresenter { Content: TileModel tile } && ReferenceEquals(tile, draggedTile))
+                    {
+                        s.HiddenTile = child;
+                        Motion.Set(child, OpacityProperty, 0);
+                    }
         if (s.SourceHostInfo != null) Motion.Run(s.SourceHostInfo.Host, OpacityProperty, 0.5, Motion.Fast, Motion.Enter);
 
         s.Bar = new Rectangle { Height = 4, RadiusX = 2, RadiusY = 2, Opacity = 0, IsHitTestVisible = false };
@@ -200,7 +233,7 @@ public partial class MainWindow
             foreach (UIElement child in panel.Children)
             {
                 var model = (child as ContentPresenter)?.Content as TileModel;
-                if (model != null && ReferenceEquals(model, s.Payload)) continue;
+                if (model != null && ReferenceEquals(model, s.DraggedTile)) continue;
 
                 ScaleTransform? scale = null;
                 if (VisualTreeHelper.GetChildrenCount(child) > 0 && VisualTreeHelper.GetChild(child, 0) is FrameworkElement inner
@@ -268,6 +301,10 @@ public partial class MainWindow
         s.Tick = Stopwatch.GetTimestamp();
         dt = Math.Clamp(dt, 0, 0.05);
 
+        if (s.FolderCandidate != null && s.TargetTile == null &&
+            Stopwatch.GetElapsedTime(s.FolderCandidateSince).TotalMilliseconds >= 750)
+            UpdateDrag(Mouse.GetPosition(RootGrid));
+
         if (!TilesScroll.IsVisible || TilesScroll.ScrollableHeight <= 0) return;
         Point p = Mouse.GetPosition(TilesScroll);
         if (p.X < 0 || p.X > TilesScroll.ActualWidth) return;
@@ -311,7 +348,7 @@ public partial class MainWindow
         TilePanel? panel = null;
         TileGroup? target = null, before = null;
         TileModel? intoTile = null;
-        int index = 0, slot = -1;
+        int slot = -1;
 
         Point inPane = RootGrid.TranslatePoint(pointer, TilesScroll);
         bool paneHit = TilesScroll.IsVisible && inPane.X >= 0 && inPane.Y >= 0
@@ -322,7 +359,18 @@ public partial class MainWindow
         else if (paneHit)
         {
             var bounds = new Rect[n];
-            for (int i = 0; i < n; i++) bounds[i] = LayoutBounds(s.Hosts[i]);
+            double previewGrowth = 0;
+            for (int i = 0; i < n; i++)
+            {
+                var host = s.Hosts[i];
+                bounds[i] = LayoutBounds(host);
+                bounds[i].Y -= previewGrowth;
+                // Later groups must not move away from the pointer as a preview grows.
+                // The last group has no successor to obscure, so its expanded area remains droppable.
+                if (i != n - 1 || s.Hover == null || !ReferenceEquals(FindChild<TilePanel>(host.Host), s.Hover))
+                    bounds[i].Height = host.InitialHeight;
+                previewGrowth += host.Host.ActualHeight - host.InitialHeight;
+            }
 
             if (s.Payload is TileGroup moving)
             {
@@ -354,9 +402,22 @@ public partial class MainWindow
                     if (panel != null)
                     {
                         target = s.Hosts[inside].Group;
-                        // Over the middle of a tile: drop INTO it (folder). A folder cannot be dropped into another tile.
+                        if (s.Hover != null && !ReferenceEquals(s.Hover, panel))
+                        {
+                            s.Hover.SetDropTarget(null, s.DropSize);
+                            s.Hover = null;
+                            TilesScroll.UpdateLayout();
+                        }
+                        // Pause over a tile's center to choose a folder instead of an ordinary placement.
                         bool canJoin = s.Payload is not TileModel { IsFolderTile: true } && s.Payload is not AppEntry { IsFolder: true };
-                        intoTile = canJoin ? panel.TileAtCenter(Mouse.GetPosition(panel), s.Payload as TileModel) : null;
+                        var candidate = canJoin ? panel.TileAtCenter(Mouse.GetPosition(panel), s.DraggedTile) : null;
+                        if (!ReferenceEquals(candidate, s.FolderCandidate))
+                        {
+                            s.FolderCandidate = candidate;
+                            s.FolderCandidateSince = Stopwatch.GetTimestamp();
+                        }
+                        if (candidate != null && Stopwatch.GetElapsedTime(s.FolderCandidateSince).TotalMilliseconds >= 750)
+                            intoTile = candidate;
                         if (intoTile != null)
                         {
                             kind = DropKind.IntoTile;
@@ -365,7 +426,6 @@ public partial class MainWindow
                         else
                         {
                             kind = DropKind.Group;
-                            index = panel.InsertionIndexAt(Mouse.GetPosition(panel));
                         }
                     }
                 }
@@ -381,6 +441,8 @@ public partial class MainWindow
             }
         }
 
+        if (!paneHit || target == null)
+            s.FolderCandidate = null;
         s.Kind = kind;
         s.TargetTile = intoTile;
         SetHotTile(s, intoTile);
@@ -389,37 +451,22 @@ public partial class MainWindow
         s.CellX = 0;
         s.CellY = 0;
 
-        // Compute the target cell for a tile drop in this group (free-form placement).
+        // Snap the dragged tile's top-left, not the mouse pointer, to the grid.
         if (kind == DropKind.Group && panel != null)
         {
-            var (w, h) = TilePacker.CellSize(panel.DropTileSize);
-            Point pp = Mouse.GetPosition(panel);
-            int cx0 = (int)Math.Floor(pp.X / TilePanel.Cell);
-            int cy0 = (int)Math.Floor(pp.Y / TilePanel.Cell);
-            cx0 = Math.Clamp(cx0, 0, Math.Max(0, panel.Columns - w));
-            cy0 = Math.Max(0, cy0);
-
-            var occupied = new List<(int, int, int, int)>();
-            if (target != null)
-                foreach (var tm in target.Tiles)
-                    if (!ReferenceEquals(tm, s.Payload as TileModel))
-                        occupied.Add((tm.Column, tm.Row, TilePacker.CellSize(tm.Size).W, TilePacker.CellSize(tm.Size).H));
-            var (fx, fy) = TilePacker.FindPositionNear(occupied, w, h, panel.Columns, cx0, cy0);
-            s.CellX = fx;
-            s.CellY = fy;
+            var (w, _) = TilePacker.CellSize(s.DropSize);
+            Point topLeft = RootGrid.TranslatePoint(new Point(pointer.X - s.Grab.X, pointer.Y - s.Grab.Y), panel);
+            s.CellX = Math.Clamp((int)Math.Round((topLeft.X - 2) / TilePanel.Cell), 0, Math.Max(0, panel.Columns - w));
+            s.CellY = Math.Max(0, (int)Math.Round((topLeft.Y - 2) / TilePanel.Cell));
         }
 
-        // Open (or close) the empty slot among the tiles of the group under the pointer.
+        // Preview the exact layout without modifying the saved tile positions.
         if (!ReferenceEquals(s.Hover, panel))
         {
-            if (s.Hover != null) s.Hover.DropIndex = -1;
+            s.Hover?.SetDropTarget(null, s.DropSize);
             s.Hover = panel;
         }
-        if (panel != null)
-        {
-            panel.DropTileSize = s.Payload is TileModel tm ? tm.Size : TileSize.Medium;
-            panel.DropIndex = -1;   // free-form placement: no slot opens, tiles stay where they are
-        }
+        panel?.SetDropTarget(new CellPos(s.CellX, s.CellY), s.DropSize);
 
         ApplySlot(s, slot);
 
@@ -480,6 +527,7 @@ public partial class MainWindow
     private void Drag_MouseUp(object sender, MouseButtonEventArgs e)
     {
         e.Handled = true;
+        UpdateDrag(e.GetPosition(RootGrid));
         CommitDrag();
     }
 
@@ -497,7 +545,7 @@ public partial class MainWindow
 
         // Put the layout back; the source tile stays hidden until the ghost has landed on it.
         if (s.Payload is TileModel) Motion.Set(s.Source, OpacityProperty, 0);
-        foreach (var p in s.Panels) { p.DropIndex = -1; p.DraggedTile = null; }
+        foreach (var p in s.Panels) { p.SetDropTarget(null, s.DropSize); p.DraggedTile = null; }
         ApplySlot(s, -1);
         UndimTiles(s);
 
@@ -529,8 +577,11 @@ public partial class MainWindow
             return;
         }
 
-        if (s.Kind == DropKind.Group && s.Hover is { } panel && !panel.GapRect.IsEmpty)
+        if (s.Kind == DropKind.Group && s.Hover is { } panel)
         {
+            panel.UpdateLayout();
+            if (panel.GapRect.IsEmpty) { s.Settling = false; CancelDrag(); return; }
+            s.Placement = new Dictionary<TileModel, CellPos>(panel.PreviewPositions);
             // Settle into the open slot (tiles carry a 2 DIP margin inside their cell).
             Rect gap = panel.GapRect;
             Point land = panel.TranslatePoint(new Point(gap.X + 2, gap.Y + 2), RootGrid);
@@ -569,16 +620,20 @@ public partial class MainWindow
         foreach (var h in s.Hosts) Motion.Set(h.Shift, TranslateTransform.YProperty, 0);
         if (commit) ApplyDrop(s);
 
-        foreach (var p in s.Panels) { p.DropIndex = -1; p.DraggedTile = null; }
+        foreach (var p in s.Panels) { p.SetDropTarget(null, s.DropSize); p.DraggedTile = null; }
         Motion.Set(s.Source, OpacityProperty, 1);
+        if (s.HiddenTile != null) Motion.Set(s.HiddenTile, OpacityProperty, 1);
         if (s.SourceHostInfo != null) Motion.Set(s.SourceHostInfo.Host, OpacityProperty, 1);
         Mouse.OverrideCursor = null;
         if (ReferenceEquals(Mouse.Captured, RootGrid)) Mouse.Capture(null);
         _suppressHide = false;
 
         // Remove the ghost only after the new layout is in place, so there is never a frame where neither it nor the tile shows.
-        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+        Action cleanup = null!;
+        cleanup = () =>
         {
+            if (!ReferenceEquals(_pendingDragCleanup, cleanup)) return;
+            _pendingDragCleanup = null;
             DragLayer.Children.Clear();
             DragLayer.Visibility = Visibility.Collapsed;
             foreach (var p in s.Panels) p.AnimateLayout = false;
@@ -589,7 +644,9 @@ public partial class MainWindow
                     && ReferenceEquals(inner.RenderTransform, scale))
                     inner.RenderTransform = Transform.Identity;
             }
-        }));
+        };
+        _pendingDragCleanup = cleanup;
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, cleanup);
     }
 
     /// <summary>Instant teardown (the menu is closing mid-drag).</summary>
@@ -606,7 +663,15 @@ public partial class MainWindow
         switch (s.Kind)
         {
             case DropKind.Group:
-                if (s.TargetGroup != null) PlaceInGroup(s.Payload, s.TargetGroup, s.CellX, s.CellY);
+                if (s.TargetGroup != null && s.Placement != null)
+                {
+                    foreach (var (tile, position) in s.Placement)
+                    {
+                        tile.Column = position.X;
+                        tile.Row = position.Y;
+                    }
+                    PlaceInGroup(s.Payload, s.TargetGroup, s.CellX, s.CellY);
+                }
                 break;
 
             case DropKind.NewGroup:

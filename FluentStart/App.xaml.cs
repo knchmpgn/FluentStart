@@ -29,7 +29,7 @@ public partial class App : Application
     }
 
     private static readonly string[] HighContrastKeys =
-        { "Brush.Text", "Brush.TextSecondary", "Brush.Hover", "Brush.Pressed", "Brush.Overlay", "Brush.Stroke", "Brush.WindowBg",
+        { "Brush.Text", "Brush.TextSecondary", "Brush.Hover", "Brush.TileHover", "Brush.Pressed", "Brush.Overlay", "Brush.Stroke", "Brush.WindowBg",
           "Brush.Flyout", "Brush.Control", "Brush.ControlHover", "Brush.ControlStroke", "Brush.ScrollThumb", "Brush.Divider" };
 
     private Mutex? _mutex;
@@ -135,6 +135,7 @@ public partial class App : Application
         _tray = new Tray(_settings,
             settingsChanged: OnSettingsChanged,
             showStart: () => _win.Toggle(),
+            hideStart: _win.HideMenu,
             openSettings: OpenSettings,
             refreshApps: () => _ = RefreshCatalogAsync(),
             clearIcons: IconCache.Clear,
@@ -291,6 +292,7 @@ public partial class App : Application
             Resources["Brush.Text"] = SystemColors.WindowTextBrush;
             Resources["Brush.TextSecondary"] = SystemColors.GrayTextBrush;
             Resources["Brush.Hover"] = SystemColors.ControlLightBrush;
+            Resources["Brush.TileHover"] = SystemColors.HighlightTextBrush;
             Resources["Brush.Pressed"] = SystemColors.ControlDarkBrush;
             Resources["Brush.Overlay"] = SystemColors.WindowBrush;
             Resources["Brush.Stroke"] = SystemColors.WindowTextBrush;

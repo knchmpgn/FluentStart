@@ -28,6 +28,8 @@ public partial class MainWindow : Window
     private bool _suppressHide;
     private bool _modalBusy;   // a native dialog / OLE drag is running: Start must not hide behind it
     private bool _isClosing;
+    private long _closeStarted;
+    private int _menuGeneration;
     private Point _dragStart;
     private object? _dragCandidate;
     private SearchResult? _searchDragCandidate;
@@ -200,6 +202,7 @@ public partial class MainWindow : Window
     private void ShowMenu()
     {
         var sw = Stopwatch.StartNew();
+        _menuGeneration++;
         CancelAllScroll();
         _isClosing = false;
         _folderAnimating = false;
@@ -248,30 +251,67 @@ public partial class MainWindow : Window
     {
         if (_isClosing) return;
         bool wasVisible = IsVisible;
-        AbortDrag();
-        ReleaseTilePress(instant: true);
-        CloseFolderOverlay(instant: true);
         _isClosing = wasVisible;
-        CancelAllScroll();
+        _closeStarted = Stopwatch.GetTimestamp();
         _lastHide = DateTime.UtcNow;
+        bool cleanupFailed = false;
+        void Cleanup(string stage, Action action)
+        {
+            try { action(); }
+            catch (Exception ex) { cleanupFailed = true; Log.Warn("Start menu dismissal cleanup failed: " + stage, ex); }
+        }
+
+        Cleanup("drag", AbortDrag);
+        Cleanup("tile press", () => ReleaseTilePress(instant: true));
+        Cleanup("folder overlay", () => CloseFolderOverlay(instant: true));
+        Cleanup("scrolling", CancelAllScroll);
         _suppressHide = false;
-        _model.CancelEdits();
-        JumpOverlay.Visibility = Visibility.Collapsed;
-        EnforcePaneVisibility();
-        SetRailExpanded(false, animate: false);
-        ResetSearchUi();
-        Flyout.CloseAll();
-        DisposeShellMenu();
-        if (!wasVisible) return;
-        // Exit mirrors the entrance but is shorter: linear fade (Fast) while sliding down with Slow Out / Fast In.
-        Motion.Run(RootGrid, OpacityProperty, 0, Motion.Fast, null);
-        Motion.Run(Slide, TranslateTransform.YProperty, Motion.SlideWindow, Motion.Fast, Motion.Exit, done: () =>
+        Cleanup("edits", _model.CancelEdits);
+        Cleanup("jump overlay", () => JumpOverlay.Visibility = Visibility.Collapsed);
+        Cleanup("panes", () => EnforcePaneVisibility());
+        Cleanup("rail", () => SetRailExpanded(false, animate: false));
+        Cleanup("search", ResetSearchUi);
+        Cleanup("flyouts", Flyout.CloseAll);
+        Cleanup("shell menu", DisposeShellMenu);
+        if (!wasVisible || !_isClosing) return;
+        if (cleanupFailed) { CompleteHide(); return; }
+        try
+        {
+            int generation = _menuGeneration;
+            Motion.Run(RootGrid, OpacityProperty, 0, Motion.Fast, null);
+            Motion.Run(Slide, TranslateTransform.YProperty, Motion.SlideWindow, Motion.Fast, Motion.Exit,
+                done: () => { if (generation == _menuGeneration) CompleteHide(); });
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Start menu exit animation failed", ex);
+            CompleteHide();
+        }
+    }
+
+    private void CompleteHide()
+    {
+        if (!_isClosing) return;
+        try
+        {
+            Hide();
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Start menu could not be hidden", ex);
+        }
+        finally
+        {
+            _isClosing = false;
+            _suppressHide = false;
+        }
+
+        try
         {
             Motion.Set(RootGrid, OpacityProperty, 1);
             Motion.Set(Slide, TranslateTransform.YProperty, 0);
-            Hide();
-            _isClosing = false;
-        });
+        }
+        catch (Exception ex) { Log.Warn("Start menu animation reset failed", ex); }
     }
 
     private void PositionWindow()
@@ -315,8 +355,7 @@ public partial class MainWindow : Window
     {
         if (_suppressHide && Flyout.Root == null && _drag == null && !_modalBusy) _suppressHide = false;
         if (_suppressHide) return;   // a context menu or drag is in progress
-        if (IsMouseOverWindow()) return; // don't hide if mouse is still over window
-        
+
         // Additional safety: if rail is expanded, collapse it and close
         if (_railExpanded) SetRailExpanded(false, animate: false);
         HideMenu();
@@ -324,6 +363,15 @@ public partial class MainWindow : Window
 
     private void CheckHideOnOutsideClick()
     {
+        if (_isClosing)
+        {
+            if (Stopwatch.GetElapsedTime(_closeStarted) > TimeSpan.FromSeconds(1))
+            {
+                Log.Warn("Start menu exit animation did not complete; forcing dismissal");
+                CompleteHide();
+            }
+            return;
+        }
         if (!IsVisible) return;
         // Self-heal: _suppressHide only has a reason to be set while a menu, drag or dialog is actually open. If one was
         // abandoned without clearing it, Start could never be closed by clicking outside.
@@ -345,13 +393,6 @@ public partial class MainWindow : Window
         if (fg == _hwnd) return;
         if (fg == _foregroundOnShow) return;   // no outside activation yet
         HideMenu();
-    }
-
-    private void Window_LostFocus(object sender, RoutedEventArgs e)
-    {
-        if (_suppressHide && Flyout.Root == null && _drag == null && !_modalBusy) _suppressHide = false;
-        if (_suppressHide) return;
-        if (!IsMouseOverWindow()) HideMenu();
     }
 
     private bool IsMouseOverWindow()
@@ -408,6 +449,8 @@ public partial class MainWindow : Window
             var src = e.OriginalSource as DependencyObject;
             if (src == null) return;
             bool inListArea = IsDescendantOf(src, AppList) || IsDescendantOf(src, TilesScroll);
+            for (var element = src; element != null; element = ParentOf(element))
+                if (element is Border { Tag: "TileGroupHeader" }) return;
             bool isItem = src is FrameworkElement fe2 && fe2.DataContext is ListRow or TileModel or TileGroup or AppEntry;
             if (inListArea && isItem) return;
             if (!inListArea && src is Button) return;
@@ -791,6 +834,12 @@ public partial class MainWindow : Window
     }
 
     // ---------- drag & drop (tiles + apps -> groups) ----------
+
+    private void Tile_ResetKeyboardFocus(object sender, MouseButtonEventArgs e)
+    {
+        // WPF otherwise keeps a keyboard focus adorner when the already-focused tile is clicked.
+        if (sender is Button { IsKeyboardFocused: true }) Keyboard.ClearFocus();
+    }
 
     private void Drag_Down(object sender, MouseButtonEventArgs e)
     {

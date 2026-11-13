@@ -15,15 +15,15 @@ internal sealed class Tray : IDisposable
 {
     private readonly WinForms.NotifyIcon _icon;
     private readonly Settings _s;
-    private readonly Action _changed, _showStart, _openSettings, _refreshApps, _clearIcons, _exit;
+    private readonly Action _changed, _showStart, _hideStart, _openSettings, _refreshApps, _clearIcons, _exit;
     private readonly Func<string> _status;
 
-    public Tray(Settings s, Action settingsChanged, Action showStart, Action openSettings,
+    public Tray(Settings s, Action settingsChanged, Action showStart, Action hideStart, Action openSettings,
                 Action refreshApps, Action clearIcons, Action exit, Func<string> status)
     {
         _s = s;
         _changed = () => { s.Save(); settingsChanged(); };
-        _showStart = showStart; _openSettings = openSettings; _refreshApps = refreshApps; _clearIcons = clearIcons; _exit = exit; _status = status;
+        _showStart = showStart; _hideStart = hideStart; _openSettings = openSettings; _refreshApps = refreshApps; _clearIcons = clearIcons; _exit = exit; _status = status;
 
         _icon = new WinForms.NotifyIcon { Icon = LoadIcon(), Text = "Fluent Start", Visible = true };
         _icon.MouseUp += (_, e) =>
@@ -35,6 +35,8 @@ internal sealed class Tray : IDisposable
 
     private void ShowMenu()
     {
+        // Hide Start before constructing the tray flyout: its deactivation cleanup closes active flyouts.
+        _hideStart();
         var items = new List<FlyoutItem>
         {
             FlyoutItem.Header(_status()),

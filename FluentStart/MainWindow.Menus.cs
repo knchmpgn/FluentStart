@@ -32,10 +32,11 @@ public partial class MainWindow
     private void OnFlyoutClosed()
     {
         _suppressHide = false;
+        int generation = _menuGeneration;
         bool commandChosen = (DateTime.UtcNow - Flyout.LastActionUtc).TotalMilliseconds < 1500;
         Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
         {
-            if (!IsVisible || _suppressHide || IsActive) return;
+            if (generation != _menuGeneration || _isClosing || !IsVisible || _suppressHide || IsActive) return;
             // A command that works inside Start (rename, hide, pin, resize...) must not close it: take the focus back.
             // Otherwise focus went elsewhere while the menu was open (a click on the desktop): hide, as usual.
             if (commandChosen) Activate();
@@ -259,17 +260,7 @@ public partial class MainWindow
         if (sender is FrameworkElement { DataContext: TileGroup tg })
         {
             e.Handled = true;
-            var items = new List<FlyoutItem>
-            {
-                new() { Text = "Rename", Glyph = "\uE8AC", Click = () => BeginGroupRename(tg) }
-            };
-            if (!ReferenceEquals(tg, _model.Groups.FirstOrDefault()))
-            {
-                items.Add(new FlyoutItem { Text = "Remove group", Glyph = "\uE74D", Click = () => _model.RemoveGroup(tg) });
-            }
-            items.Add(FlyoutItem.Separator());
-            items.Add(new() { Text = "Settings", Glyph = "\uE713", Click = () => { HideMenu(); SettingsRequested?.Invoke(); } });
-            ShowFlyoutAtCursor(items);
+            ShowFlyoutAtCursor(BuildTileGroupMenu(tg));
             return;
         }
 
@@ -287,6 +278,36 @@ public partial class MainWindow
                 HideMenu();
             } }
         });
+    }
+
+    private List<FlyoutItem> BuildTileGroupMenu(TileGroup group)
+    {
+        var items = new List<FlyoutItem>
+        {
+            new() { Text = "Rename", Glyph = "\uE8AC", Click = () => BeginGroupRename(group) },
+            new() { Text = "Remove", Glyph = "\uE74D", Click = () => ConfirmRemoveGroup(group) },
+            FlyoutItem.Separator()
+        };
+        items.AddRange(BuildBackgroundMenu());
+        return items;
+    }
+
+    private void ConfirmRemoveGroup(TileGroup group)
+    {
+        _modalBusy = true;
+        _suppressHide = true;
+        try
+        {
+            if (MessageBox.Show(this, $"Remove \"{group.Name}\" and unpin all its tiles?\n\nThis won't uninstall the apps.",
+                    "Remove group", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes)
+                _model.RemoveGroup(group);
+        }
+        finally
+        {
+            _modalBusy = false;
+            _suppressHide = false;
+            if (IsVisible) Activate();
+        }
     }
 
     private void Result_RightClick(object sender, MouseButtonEventArgs e)
