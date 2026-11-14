@@ -25,7 +25,7 @@ internal sealed class Tray : IDisposable
         _changed = () => { s.Save(); settingsChanged(); };
         _showStart = showStart; _hideStart = hideStart; _openSettings = openSettings; _refreshApps = refreshApps; _clearIcons = clearIcons; _exit = exit; _status = status;
 
-        _icon = new WinForms.NotifyIcon { Icon = LoadIcon(), Text = "Fluent Start", Visible = true };
+        _icon = new WinForms.NotifyIcon { Icon = LoadIcon(), Text = "Fluent Start", Visible = !_s.HideTrayIcon };
         _icon.MouseUp += (_, e) =>
         {
             if (e.Button == WinForms.MouseButtons.Right) ShowMenu();
@@ -88,6 +88,8 @@ internal sealed class Tray : IDisposable
         catch (Exception ex) { Log.WarnOnce("trayicon", "Tray icon load failed", ex); }
         return Drawing.SystemIcons.Application;
     }
+
+    public void ApplyVisibility() => _icon.Visible = !_s.HideTrayIcon;
 
     public void Dispose()
     {

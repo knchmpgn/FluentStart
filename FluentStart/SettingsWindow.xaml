@@ -334,6 +334,12 @@
                 <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource Brush.TextSecondary}" FontSize="12" Text="The elevated task (UAC prompt) lets the hooks see input going to elevated windows. Without it, Win-key and Start-button interception does not work while an elevated app is focused."/>
               </StackPanel>
             </Border>
+            <Border Style="{StaticResource SettingsCard}">
+              <StackPanel>
+                <TextBlock Text="Tray" Style="{StaticResource SettingsHeader}"/>
+                <CheckBox x:Name="HideTrayCheck" Style="{StaticResource SettingsCheckBox}" Content="Hide tray icon" Click="Changed"/>
+              </StackPanel>
+            </Border>
           </StackPanel>
         </ScrollViewer>
       </TabItem>

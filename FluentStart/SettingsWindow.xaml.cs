@@ -58,6 +58,7 @@ public partial class SettingsWindow : Window
         WinKeyCheck.IsChecked = _s.EnableWinKey;
         StartBtnCheck.IsChecked = _s.EnableStartButton;
         StartupCheck.IsChecked = Startup.IsEnabled();
+        HideTrayCheck.IsChecked = _s.HideTrayIcon;
         SearchFilesCheck.IsChecked = _s.SearchFiles;
         EverythingCheck.IsChecked = _s.UseEverything;
         EverythingAutoStartCheck.IsChecked = _s.EverythingAutoStart;
@@ -151,6 +152,7 @@ public partial class SettingsWindow : Window
         if (UiFontSizeBox.SelectedItem is double uiFs) _s.UiFontSize = uiFs;
         _s.EnableWinKey = WinKeyCheck.IsChecked == true;
         _s.EnableStartButton = StartBtnCheck.IsChecked == true;
+        _s.HideTrayIcon = HideTrayCheck.IsChecked == true;
         _s.Save();
         _changed();
         Dispatcher.BeginInvoke(() => activeScroll.ScrollToVerticalOffset(scrollOffset));

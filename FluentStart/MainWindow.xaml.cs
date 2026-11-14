@@ -26,6 +26,7 @@ public partial class MainWindow : Window
     private DateTime _lastHide = DateTime.MinValue;
     private bool _railExpanded;
     private bool _suppressHide;
+    private DateTime _hideConditionSince = DateTime.MinValue;
     private bool _modalBusy;   // a native dialog / OLE drag is running: Start must not hide behind it
     private bool _isClosing;
     private long _closeStarted;
@@ -207,7 +208,7 @@ public partial class MainWindow : Window
         _isClosing = false;
         _folderAnimating = false;
         _suppressHide = false;
-        ResetSearchUi();
+        _hideConditionSince = DateTime.MinValue;
         JumpOverlay.Visibility = Visibility.Collapsed;
         SetRailExpanded(false, animate: false);
         ResetScrollModeOnOpen();
@@ -365,9 +366,15 @@ public partial class MainWindow : Window
         if (_suppressHide && Flyout.Root == null && _drag == null && !_modalBusy) _suppressHide = false;
         if (_suppressHide) return;   // a context menu or drag is in progress
 
-        // Additional safety: if rail is expanded, collapse it and close
-        if (_railExpanded) SetRailExpanded(false, animate: false);
-        HideMenu();
+        // Deactivation can fire transiently (notifications, focus glitches). Re-check shortly before hiding.
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        {
+            if (_isClosing || !IsVisible) return;
+            if (_suppressHide) return;
+            if (IsActive) return;
+            if (_railExpanded) SetRailExpanded(false, animate: false);
+            HideMenu();
+        }));
     }
 
     private void CheckHideOnOutsideClick()
@@ -397,10 +404,13 @@ public partial class MainWindow : Window
             if (!over) { HideMenu(); return; }
         }
 
-        if (IsMouseOverWindow()) return;
+        if (IsMouseOverWindow()) { _hideConditionSince = DateTime.MinValue; return; }
         IntPtr fg = NativeMethods.GetForegroundWindow();
-        if (fg == _hwnd) return;
-        if (fg == _foregroundOnShow) return;   // no outside activation yet
+        if (fg == _hwnd) { _hideConditionSince = DateTime.MinValue; return; }
+        if (fg == _foregroundOnShow) { _hideConditionSince = DateTime.MinValue; return; }   // no outside activation yet
+        if (_hideConditionSince == DateTime.MinValue) _hideConditionSince = DateTime.UtcNow;
+        if ((DateTime.UtcNow - _hideConditionSince).TotalMilliseconds < 150) return;
+        _hideConditionSince = DateTime.MinValue;
         HideMenu();
     }
 

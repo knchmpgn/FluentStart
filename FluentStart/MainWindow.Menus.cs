@@ -134,12 +134,12 @@ public partial class MainWindow
         if (section == StartModel.MostUsed)
         {
             items.Add(FlyoutItem.Separator());
-            items.Add(new FlyoutItem { Text = "Clear most used", Glyph = "\uE74D", Click = () => _model.ClearMostUsed() });
+            items.Add(new FlyoutItem { Text = "Clear", Glyph = "\uE74D", Click = () => _model.ClearMostUsed() });
         }
         else if (section == StartModel.RecentlyAdded)
         {
             items.Add(FlyoutItem.Separator());
-            items.Add(new FlyoutItem { Text = "Clear recently added", Glyph = "\uE74D", Click = () => _model.ClearRecentlyAdded() });
+            items.Add(new FlyoutItem { Text = "Clear", Glyph = "\uE74D", Click = () => _model.ClearRecentlyAdded() });
         }
 
         // Jump list: recent / frequent items of the app (e.g. Word's recent documents). They come last, after every command

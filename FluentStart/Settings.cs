@@ -72,6 +72,7 @@ public sealed class Settings
 
     public bool EnableWinKey { get; set; } = true;
     public bool EnableStartButton { get; set; } = true;
+    public bool HideTrayIcon { get; set; } = false;
 
     /// <summary>False in --safe mode: nothing is written back to settings.json.</summary>
     [JsonIgnore] public bool Persist { get; set; } = true;

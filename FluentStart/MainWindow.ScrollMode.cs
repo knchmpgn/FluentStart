@@ -6,6 +6,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using FluentStart.Native;
 
 namespace FluentStart;
 
@@ -17,6 +18,7 @@ public partial class MainWindow
     private double _scrollModeTilesOffset, _scrollModeListOffset;
     private bool _sectionTransition;
     private int _sectionTransitionId;
+    private bool _pointerDrivenSectionSwitch;
     private DateTime _lastSectionWheel = DateTime.MinValue;
     private double _sectionWheelDelta;
     private bool _blockSectionWheel;
@@ -96,7 +98,7 @@ public partial class MainWindow
                     _sectionWheelDelta = 0;
                     _blockSectionWheel = true;
                     _blockedWheelDirection = 1;
-                    SwitchScrollSection(tiles: true);
+                    SwitchScrollSection(tiles: true, pointerDriven: true);
                 }
             }
             else _sectionWheelDelta = 0;
@@ -130,7 +132,7 @@ public partial class MainWindow
         _sectionWheelDelta = 0;
         _blockSectionWheel = true;
         _blockedWheelDirection = Math.Sign(e.Delta);
-        SwitchScrollSection(!_showTiles);
+        SwitchScrollSection(!_showTiles, pointerDriven: true);
     }
 
     private void ScrollMode_TouchDown(object? sender, TouchEventArgs e)
@@ -156,12 +158,17 @@ public partial class MainWindow
         if (Math.Abs(dy) < 48 || Math.Abs(dy) <= Math.Abs(end.X - _sectionTouchStart.X) ||
             (_showTiles ? dy >= 0 : dy <= 0)) return;
         e.Handled = true;
-        SwitchScrollSection(!_showTiles);
+        SwitchScrollSection(!_showTiles, pointerDriven: true);
     }
 
     private void SectionButton_Click(object sender, RoutedEventArgs e)
     {
-        if (CanNavigateSections) SwitchScrollSection(!_showTiles);
+        if (!CanNavigateSections) return;
+        SwitchScrollSection(!_showTiles);
+        if (SectionButton != null && SectionButton.IsMouseOver)
+        {
+            Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() => Keyboard.ClearFocus()));
+        }
     }
 
     private void ResetScrollModeOnOpen()
@@ -175,13 +182,15 @@ public partial class MainWindow
         TilesScroll.ScrollToVerticalOffset(0);
     }
 
-    private void SwitchScrollSection(bool tiles)
+    private void SwitchScrollSection(bool tiles, bool pointerDriven = false)
     {
         if (!ScrollMode || tiles == _showTiles) return;
+        _pointerDrivenSectionSwitch = pointerDriven;
         SaveScrollModeOffset();
         _scrollModeTiles = _showTiles = tiles;
         ShowScrollModePane(tiles, animate: true);
         UpdateSectionButton();
+        _pointerDrivenSectionSwitch = false;
     }
 
     private void SaveScrollModeOffset()
@@ -226,7 +235,11 @@ public partial class MainWindow
         if (_searchVisible) SetPanesOpacity(0);
         FrameworkElement show = tiles ? TilesScroll : AppList;
         FrameworkElement hide = tiles ? AppList : TilesScroll;
-        if (hide.IsKeyboardFocusWithin) SectionButton.Focus();
+        if (hide.IsKeyboardFocusWithin)
+        {
+            if (_pointerDrivenSectionSwitch) Keyboard.ClearFocus();
+            else SectionButton.Focus();
+        }
         if (!animate || !AnimationsEnabled || !IsVisible || !hide.IsVisible)
         {
             hide.Visibility = Visibility.Collapsed;
@@ -266,5 +279,30 @@ public partial class MainWindow
         AutomationProperties.SetHelpText(SectionButton, _showTiles
             ? "Scroll down or activate to show all apps."
             : "Scroll up at the top of the list or activate to show pinned tiles.");
+         RefreshSectionButtonHover();
+    }
+    private void RefreshSectionButtonHover()
+    {
+        if (SectionButton == null) return;
+        Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(() =>
+        {
+            if (SectionButton == null) return;
+            try { Mouse.Synchronize(); } catch { }
+            if (!SectionButton.IsMouseOver) return;
+            try
+            {
+                NativeMethods.GetCursorPos(out var pt);
+                Point cursor = PointFromScreen(new Point(pt.X, pt.Y));
+                var hit = VisualTreeHelper.HitTest(this, cursor);
+                bool actuallyOver = hit?.VisualHit != null && IsDescendantOf(hit.VisualHit, SectionButton);
+                if (actuallyOver) return;
+                SectionButton.IsHitTestVisible = false;
+                Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
+                {
+                    if (SectionButton != null) SectionButton.IsHitTestVisible = true;
+                }));
+            }
+            catch { }
+        }));
     }
 }
