@@ -293,6 +293,7 @@
         </Setter.Value>
       </Setter>
       <EventSetter Event="MouseLeftButtonUp" Handler="Result_Click"/>
+      <EventSetter Event="MouseRightButtonUp" Handler="Result_RightClick"/>   <!-- on the row itself, so its padding/margins are covered too -->
       <EventSetter Event="PreviewMouseLeftButtonDown" Handler="Result_DragDown"/>
       <EventSetter Event="PreviewMouseMove" Handler="Result_DragMove"/>
     </Style>
@@ -625,7 +626,7 @@
         </ListBox.GroupStyle>
         <ListBox.ItemTemplate>
           <DataTemplate>
-            <Grid Height="54" Background="Transparent" AutomationProperties.Name="{Binding Title}" MouseRightButtonUp="Result_RightClick">
+            <Grid Height="54" Background="Transparent" AutomationProperties.Name="{Binding Title}">
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="48"/>
                 <ColumnDefinition Width="*"/>

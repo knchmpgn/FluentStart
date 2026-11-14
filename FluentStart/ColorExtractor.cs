@@ -20,8 +20,12 @@ public static class ColorExtractor
             conv.CopyPixels(px, stride, 0);
 
             double sr = 0, sg = 0, sb = 0, sw = 0;
-            for (int i = 0; i + 3 < px.Length; i += 4)
+            // Icons are 128-256 px; sampling every other pixel in both directions gives the same average colour at a quarter of the work.
+            int step = w >= 128 && h >= 128 ? 2 : 1;
+            for (int y = 0; y < h; y += step)
+            for (int x = 0; x < w; x += step)
             {
+                int i = y * stride + x * 4;
                 byte b = px[i], g = px[i + 1], r = px[i + 2], a = px[i + 3];
                 if (a < 160) continue;
                 int max = Math.Max(r, Math.Max(g, b)), min = Math.Min(r, Math.Min(g, b));
@@ -31,7 +35,7 @@ public static class ColorExtractor
                 if (weight < 0.04) continue;
                 sr += r * weight; sg += g * weight; sb += b * weight; sw += weight;
             }
-            if (sw < 8) return null;
+            if (sw < 8.0 / (step * step)) return null;   // threshold scales with the number of samples
 
             double R = sr / sw, G = sg / sw, B = sb / sw;
             double lum = (0.299 * R + 0.587 * G + 0.114 * B) / 255.0;

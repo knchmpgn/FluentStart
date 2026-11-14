@@ -467,6 +467,7 @@ public partial class MainWindow : Window
         {
             var src = e.OriginalSource as DependencyObject;
             if (src == null) return;
+            if (IsDescendantOf(src, ResultsList)) return;   // search results open their own menu on right-click (Result_RightClick)
             bool inListArea = IsDescendantOf(src, AppList) || IsDescendantOf(src, TilesScroll);
             for (var element = src; element != null; element = ParentOf(element))
                 if (element is Border { Tag: "TileGroupHeader" }) return;

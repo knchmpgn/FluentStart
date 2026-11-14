@@ -176,10 +176,12 @@ public partial class MainWindow
         if (!ScrollMode) return;
         _scrollModeTiles = _showTiles = true;
         _scrollModeTilesOffset = 0;
+        _scrollModeListOffset = 0;   // the app list always starts at the top on open, not wherever it was left
         _sectionWheelDelta = 0;
         _blockSectionWheel = false;
         _lastSectionWheel = DateTime.MinValue;
         TilesScroll.ScrollToVerticalOffset(0);
+        _appListScrollViewer?.ScrollToVerticalOffset(0);
     }
 
     private void SwitchScrollSection(bool tiles, bool pointerDriven = false)

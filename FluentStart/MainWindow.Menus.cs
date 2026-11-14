@@ -323,17 +323,32 @@ public partial class MainWindow
     /// Menu of a search result. An app gets exactly the menu it has in the app list (Pin to Start, More, Uninstall, Hide, recent files...);
     /// everything else gets the commands of its own result.
     /// </summary>
-    private List<FlyoutItem> ResultMenuItems(SearchResult result) => result.App != null && result.Kind == SearchKind.App
-        ? BuildAppMenu(result.App, null, inSearch: true)
-        : result.Actions.Select(a => new FlyoutItem
+    private List<FlyoutItem> ResultMenuItems(SearchResult result)
     {
-        Text = a.Label, Glyph = a.Glyph,
-        Click = () =>
+        var app = AppForResult(result);
+        if (app != null) return BuildAppMenu(app, null, inSearch: true);
+        return result.Actions.Select(a => new FlyoutItem
         {
-            try { a.Execute(); } catch (Exception ex) { Log.Warn("Result action failed: " + a.Label, ex); }
-            HideMenu();
-        }
-    }).ToList();
+            Text = a.Label, Glyph = a.Glyph,
+            Click = () =>
+            {
+                try { a.Execute(); } catch (Exception ex) { Log.Warn("Result action failed: " + a.Label, ex); }
+                HideMenu();
+            }
+        }).ToList();
+    }
+
+    /// <summary>
+    /// The app behind a search result: the result's own app, or - for a file hit that is a Start-menu shortcut (e.g. "Disk Cleanup.lnk"
+    /// found by Windows Search / Everything) - the app-list entry for that shortcut, so it gets the same menu as in the app list.
+    /// </summary>
+    private AppEntry? AppForResult(SearchResult result)
+    {
+        if (result.App != null && result.Kind == SearchKind.App) return result.App;
+        if (result.Kind is not (SearchKind.File or SearchKind.Document) || string.IsNullOrEmpty(result.Path)) return null;
+        string path = result.Path!;
+        return _model.Apps.FirstOrDefault(a => !a.IsFolder && string.Equals(a.Path, path, StringComparison.OrdinalIgnoreCase));
+    }
 
     private void Rail_RightClick(object sender, MouseButtonEventArgs e)
     {
