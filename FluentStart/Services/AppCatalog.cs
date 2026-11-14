@@ -17,7 +17,36 @@ internal static class AppCatalog
     /// </summary>
     public sealed record Item(string Id, string Name, string? Path = null, string? Folder = null);
 
-    public static List<Item>? LoadCache() => Storage.Load<List<Item>>("apps-cache.json");
+    public static List<Item>? LoadCache()
+    {
+        var cache = Storage.Load<List<Item>>("apps-cache.json");
+        if (cache != null) lock (SaveGate) { _savedSignature = Signature(cache); _savedAny = true; }   // the file already holds exactly this
+        return cache;
+    }
+
+    private static readonly object SaveGate = new();
+    private static int _savedSignature;
+    private static bool _savedAny;
+
+    private static int Signature(IEnumerable<Item> items)
+    {
+        var hash = new HashCode();
+        foreach (var it in items) { hash.Add(it.Id); hash.Add(it.Name); hash.Add(it.Path); hash.Add(it.Folder); }
+        return hash.ToHashCode();
+    }
+
+    /// <summary>The catalog is re-read every time the menu opens after 30 s; only touch the disk when the list actually changed.</summary>
+    private static void SaveCacheIfChanged(List<Item> list)
+    {
+        int sig = Signature(list);
+        lock (SaveGate)
+        {
+            if (_savedAny && sig == _savedSignature) return;
+            Storage.Save("apps-cache.json", list);
+            _savedSignature = sig;
+            _savedAny = true;
+        }
+    }
 
     /// <summary>
     /// The native Start's "All apps" list is the shell's AppsFolder (shell:AppsFolder). That set is used verbatim, so the app list is the
@@ -28,15 +57,16 @@ internal static class AppCatalog
         var shortcutsTask = StaRunner.Run(StartMenuScanner.Scan);
 
         List<Item> apps;
-        try { apps = await QueryAppsFolderAsync(native); }
+        try { apps = await QueryAppsFolderAsync(native).ConfigureAwait(false); }
         catch (Exception ex) { Log.Warn("AppsFolder enumeration failed", ex); apps = new(); }
 
         List<ShortcutInfo> shortcuts;
-        try { shortcuts = await shortcutsTask; }
+        try { shortcuts = await shortcutsTask.ConfigureAwait(false); }
         catch (Exception ex) { Log.Warn("Start menu scan failed", ex); shortcuts = new(); }
 
+        // Matching + the cache write need no UI thread (callers resume on their own context after awaiting this method).
         var list = Build(apps, shortcuts);
-        if (list.Count > 0) Storage.Save("apps-cache.json", list);
+        if (list.Count > 0) SaveCacheIfChanged(list);
         return list;
     }
 

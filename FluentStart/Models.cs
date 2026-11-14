@@ -202,6 +202,12 @@ public sealed class ListRow : Observable
     /// <summary>Set by StartModel before the view refreshes while searching.</summary>
     public int SearchScore { get; set; }
 
+    /// <summary>
+    /// Unhooks this row from its app. Rows are recreated on every rebuild / section refresh while AppEntry objects live on, so without
+    /// this every discarded row stayed subscribed (and alive) and received every later icon / name change.
+    /// </summary>
+    internal void Detach() => App.PropertyChanged -= OnAppChanged;
+
     private void OnAppChanged(object? sender, PropertyChangedEventArgs e)
     {
         switch (e.PropertyName)

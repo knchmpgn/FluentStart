@@ -62,12 +62,12 @@ public partial class MainWindow
         for (var element = source; element != null && !ReferenceEquals(element, host); element = ParentOf(element))
         {
             if (element is TextBox || (!wheel && element is ScrollBar)) return false;
-            if (element is ScrollViewer viewer && !ReferenceEquals(viewer, _appListScrollViewer)) return false;
+            if (element is ScrollViewer viewer && !ReferenceEquals(viewer, CurrentAppListViewer())) return false;
         }
         return true;
     }
 
-    private ScrollViewer? ActiveSectionViewer => _showTiles ? TilesScroll : _appListScrollViewer;
+    private ScrollViewer? ActiveSectionViewer => _showTiles ? TilesScroll : CurrentAppListViewer();
 
     private bool AtSectionBoundary(ScrollViewer viewer) =>
         _showTiles ? viewer.VerticalOffset >= viewer.ScrollableHeight - 0.5 : viewer.VerticalOffset <= 0.5;
@@ -80,12 +80,26 @@ public partial class MainWindow
 
         var source = e.OriginalSource as DependencyObject;
         if (_sectionTransition && source != null &&
-            (IsDescendantOf(source, AppList) || IsDescendantOf(source, TilesScroll)))
+            (IsDescendantOf(source, AppList) || IsDescendantOf(source, TilesScroll) ||
+             IsDescendantOf(source, SectionButton)))
         {
-            _lastSectionWheel = DateTime.UtcNow;
-            _blockSectionWheel = true;
-            _blockedWheelDirection = Math.Sign(e.Delta);
+            DateTime transitionWheelTime = DateTime.UtcNow;
+            if ((transitionWheelTime - _lastSectionWheel).TotalMilliseconds >= 220) _sectionWheelDelta = 0;
+            _lastSectionWheel = transitionWheelTime;
             e.Handled = true;
+            if (!_showTiles && e.Delta > 0 && IsSectionInput(source, wheel: true) &&
+                CurrentAppListViewer() is { IsVisible: true } list && AtSectionBoundary(list))
+            {
+                _sectionWheelDelta += e.Delta;
+                if (_sectionWheelDelta >= 40)
+                {
+                    _sectionWheelDelta = 0;
+                    _blockSectionWheel = true;
+                    _blockedWheelDirection = 1;
+                    SwitchScrollSection(tiles: true);
+                }
+            }
+            else _sectionWheelDelta = 0;
             return;
         }
         if (!IsSectionInput(source, wheel: true)) return;
@@ -150,6 +164,17 @@ public partial class MainWindow
         if (CanNavigateSections) SwitchScrollSection(!_showTiles);
     }
 
+    private void ResetScrollModeOnOpen()
+    {
+        if (!ScrollMode) return;
+        _scrollModeTiles = _showTiles = true;
+        _scrollModeTilesOffset = 0;
+        _sectionWheelDelta = 0;
+        _blockSectionWheel = false;
+        _lastSectionWheel = DateTime.MinValue;
+        TilesScroll.ScrollToVerticalOffset(0);
+    }
+
     private void SwitchScrollSection(bool tiles)
     {
         if (!ScrollMode || tiles == _showTiles) return;
@@ -173,7 +198,7 @@ public partial class MainWindow
         int generation = _menuGeneration;
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
         {
-            if (!ScrollMode || !IsVisible || _showTiles != tiles || generation != _menuGeneration) return;
+            if (!ScrollMode || !IsVisible || _isClosing || _showTiles != tiles || generation != _menuGeneration) return;
             var viewer = ActiveSectionViewer;
             if (viewer == null) return;
             double offset = tiles ? _scrollModeTilesOffset : _scrollModeListOffset;

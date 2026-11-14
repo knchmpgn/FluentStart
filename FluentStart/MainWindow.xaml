@@ -190,23 +190,21 @@
                 <Grid>
                   <Border Background="{TemplateBinding Background}" CornerRadius="8"/>
                   <Border x:Name="Bd" CornerRadius="8" BorderThickness="2" BorderBrush="Transparent"/>
+                  <!-- Hover: a single light border sitting exactly on the tile's outer edge (no inset lines). -->
+                  <Border x:Name="HoverGlow" Visibility="Collapsed" IsHitTestVisible="False" CornerRadius="8" BorderThickness="1" BorderBrush="#80FFFFFF"/>
                   <ContentPresenter Margin="2"/>
-                  <Grid x:Name="HoverOverlay" Visibility="Collapsed" IsHitTestVisible="False" ClipToBounds="True">
-                    <Border CornerRadius="8" BorderThickness="3" BorderBrush="#66000000"/>
-                    <Border x:Name="HoverBorder" Margin="1" CornerRadius="7" BorderThickness="2"
-                            BorderBrush="{DynamicResource Brush.TileHover}"/>
-                  </Grid>
                 </Grid>
               <ControlTemplate.Triggers>
+                <!-- Must stay above IsPressed so pressing overrides it. -->
                 <MultiTrigger>
                   <MultiTrigger.Conditions>
                     <Condition Property="IsMouseOver" Value="True"/>
                     <Condition Property="IsEnabled" Value="True"/>
                   </MultiTrigger.Conditions>
-                  <Setter TargetName="HoverOverlay" Property="Visibility" Value="Visible"/>
+                  <Setter TargetName="HoverGlow" Property="Visibility" Value="Visible"/>
                 </MultiTrigger>
                 <Trigger Property="IsPressed" Value="True">
-                  <Setter TargetName="HoverOverlay" Property="Visibility" Value="Collapsed"/>
+                  <Setter TargetName="HoverGlow" Property="Visibility" Value="Collapsed"/>
                   <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource Brush.Pressed}"/>
                 </Trigger>
              </ControlTemplate.Triggers>

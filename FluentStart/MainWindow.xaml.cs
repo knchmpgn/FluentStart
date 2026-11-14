@@ -76,8 +76,7 @@ public partial class MainWindow : Window
         DataContext = model;
 
         _hideTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
-        _hideTimer.Tick += (_, _) => CheckHideOnOutsideClick();
-        _hideTimer.Start();
+        _hideTimer.Tick += (_, _) => CheckHideOnOutsideClick();   // runs only while the menu is visible/closing (started in ShowMenu, stopped in CompleteHide)
         _appListScrollTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(800) };
         _appListScrollTimer.Tick += (_, _) =>
         {
@@ -211,6 +210,7 @@ public partial class MainWindow : Window
         ResetSearchUi();
         JumpOverlay.Visibility = Visibility.Collapsed;
         SetRailExpanded(false, animate: false);
+        ResetScrollModeOnOpen();
         _showTiles = ScrollMode ? _scrollModeTiles : _settings.ViewMode == StartViewMode.TilesOnly;
         ApplyViewMode(animate: false);
         UpdateRailButtonVisibility();
@@ -221,6 +221,7 @@ public partial class MainWindow : Window
         // Reapply appearance before showing to ensure Mica/backdrop is consistent
         ApplyAppearance(Appearance.Dark);
 
+        _hideTimer?.Start();
         Show();
         NativeMethods.ForceForeground(_hwnd);
         Activate();
@@ -311,6 +312,7 @@ public partial class MainWindow : Window
         {
             _isClosing = false;
             _suppressHide = false;
+            _hideTimer?.Stop();
         }
 
         try
@@ -627,6 +629,28 @@ public partial class MainWindow : Window
         ConfigureScrollModePanning();
         _appListScrollBar = FindChild<ScrollBar>(AppList);
         if (_appListScrollBar != null) _appListScrollBar.Tag = false;
+    }
+
+    /// <summary>
+    /// The app list's ScrollViewer. It is captured on Loaded, but a collapsed list has no template yet and a re-templated list
+    /// (theme / style change) gets a new ScrollViewer, so the cached one can be null or stale. Scroll mode's "scroll up at the top
+    /// to return to the tiles" depends on it, so re-resolve whenever the cached one is missing or no longer inside the list.
+    /// </summary>
+    private ScrollViewer? CurrentAppListViewer()
+    {
+        var viewer = _appListScrollViewer;
+        if (viewer != null && IsDescendantOf(viewer, AppList)) return viewer;
+        if (viewer != null) viewer.ScrollChanged -= AppList_ScrollChanged;
+        viewer = FindChild<ScrollViewer>(AppList);
+        _appListScrollViewer = viewer;
+        if (viewer != null)
+        {
+            viewer.ScrollChanged += AppList_ScrollChanged;
+            ConfigureScrollModePanning();
+            _appListScrollBar = FindChild<ScrollBar>(AppList);
+            if (_appListScrollBar != null) _appListScrollBar.Tag = false;
+        }
+        return viewer;
     }
 
     private void AppList_ScrollChanged(object sender, ScrollChangedEventArgs e)

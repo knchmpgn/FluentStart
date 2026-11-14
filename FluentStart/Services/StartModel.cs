@@ -247,6 +247,7 @@ public sealed class StartModel : Observable
     {
         var expanded = new HashSet<string>(_folderRows.Where(kv => kv.Value.IsExpanded).Select(kv => kv.Key), StringComparer.OrdinalIgnoreCase);
 
+        foreach (var old in _structRows) old.Detach();
         _structRows.Clear();
         _mainRows.Clear();
         _folderRows.Clear();
@@ -535,6 +536,7 @@ public sealed class StartModel : Observable
 
     private void BuildSections()
     {
+        foreach (var old in _sectionRows) old.Detach();
         _sectionRows.Clear();
 
         int n = Math.Max(0, _settings.QuickItems);

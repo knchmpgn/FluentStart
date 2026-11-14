@@ -19,6 +19,29 @@ internal static class StartMenuScanner
 {
     private static readonly string[] Extensions = { ".lnk", ".url", ".appref-ms" };
 
+    private static bool IsShortcutExtension(string ext)
+    {
+        foreach (string e in Extensions)
+            if (ext.Equals(e, StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
+
+    // Reading a .lnk is a COM round trip per file on every refresh. A shortcut's target/AUMID only change when the file does, so
+    // reuse the last read while (last-write time, size) are unchanged. Failed reads (null, null) are never cached.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (long Ticks, long Length, string? Target, string? Aumid)> LnkCache =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    private static (string? Target, string? Aumid) ReadLnkCached(FileInfo fi)
+    {
+        string path = fi.FullName;
+        long ticks = fi.LastWriteTimeUtc.Ticks, length = fi.Length;
+        if (LnkCache.TryGetValue(path, out var c) && c.Ticks == ticks && c.Length == length) return (c.Target, c.Aumid);
+
+        var read = ShortcutReader.Read(path);
+        if (read.Target != null || read.Aumid != null) LnkCache[path] = (ticks, length, read.Target, read.Aumid);
+        return read;
+    }
+
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct SHFILEINFO
     {
@@ -56,23 +79,24 @@ internal static class StartMenuScanner
 
     private static void Walk(string root, string dir, Dictionary<string, ShortcutInfo> result, Dictionary<string, string> displayCache)
     {
-        IEnumerable<string> files;
-        try { files = Directory.EnumerateFiles(dir).ToList(); }
+        List<FileInfo> files;
+        try { files = new DirectoryInfo(dir).EnumerateFiles().ToList(); }   // attributes + timestamps come with the enumeration: no per-file syscalls
         catch { return; }
 
-        foreach (string file in files)
+        foreach (FileInfo fi in files)
         {
+            string file = fi.FullName;
             try
             {
-                if (!Extensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase)) continue;
-                if ((File.GetAttributes(file) & FileAttributes.Hidden) != 0) continue;
+                if (!IsShortcutExtension(fi.Extension)) continue;
+                if ((fi.Attributes & FileAttributes.Hidden) != 0) continue;
 
                 string rel = Path.GetRelativePath(root, file);
                 string? folderRel = Path.GetDirectoryName(rel);
                 string? folder = string.IsNullOrEmpty(folderRel) ? null : DisplayPath(root, folderRel, displayCache);
                 string name = Path.GetFileNameWithoutExtension(file);
-                var (target, aumid) = Path.GetExtension(file).Equals(".lnk", StringComparison.OrdinalIgnoreCase)
-                    ? ShortcutReader.Read(file)
+                var (target, aumid) = fi.Extension.Equals(".lnk", StringComparison.OrdinalIgnoreCase)
+                    ? ReadLnkCached(fi)
                     : (null, null);
                 result[rel] = new ShortcutInfo(name, file, folder, target, aumid);
             }

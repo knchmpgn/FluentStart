@@ -29,7 +29,7 @@ public partial class App : Application
     }
 
     private static readonly string[] HighContrastKeys =
-        { "Brush.Text", "Brush.TextSecondary", "Brush.Hover", "Brush.TileHover", "Brush.Pressed", "Brush.Overlay", "Brush.Stroke", "Brush.WindowBg",
+        { "Brush.Text", "Brush.TextSecondary", "Brush.Hover", "Brush.TileHover", "Brush.TileHoverInnerStroke", "Brush.Pressed", "Brush.Overlay", "Brush.Stroke", "Brush.WindowBg",
           "Brush.Flyout", "Brush.Control", "Brush.ControlHover", "Brush.ControlStroke", "Brush.ScrollThumb", "Brush.Divider" };
 
     private Mutex? _mutex;
@@ -110,7 +110,7 @@ public partial class App : Application
             ? "FluentStart could not verify the taskbar Start button. It will leave the native Start button working until the button can be located."
             : null;
         _locatorTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };   // events (show, TaskbarCreated, display change) cover most changes
-        _locatorTimer.Tick += (_, _) => _ = RefreshStartButtonAsync();
+        _locatorTimer.Tick += (_, _) => _ = RefreshStartButtonAsync(full: false);
         _locatorTimer.Start();
 
         if (!noHooks)
@@ -150,18 +150,27 @@ public partial class App : Application
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
     }
 
-    private void OnUserPreferenceChanged(object? sender, UserPreferenceChangedEventArgs e) => Dispatcher.BeginInvoke(new Action(() =>
+    private int _prefPending;
+
+    // Windows raises several UserPreferenceChanged events for one change (an accent colour switch sends a burst). Re-applying the
+    // whole theme for each was wasted work, so a burst is collapsed into one pass that runs once the UI thread is idle.
+    private void OnUserPreferenceChanged(object? sender, UserPreferenceChangedEventArgs e)
     {
-        ApplyTheme();
-        _win.ApplyAppearance(_dark);
-        _win.ApplyFonts();
-    }));
+        if (Interlocked.Exchange(ref _prefPending, 1) == 1) return;
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        {
+            Interlocked.Exchange(ref _prefPending, 0);   // reset first: an event arriving during the pass schedules the next one
+            ApplyTheme();
+            _win.ApplyAppearance(_dark);
+            _win.ApplyFonts();
+        }));
+    }
 
     private void OnDisplaySettingsChanged(object? sender, EventArgs e) => _ = RefreshStartButtonAsync();
 
-    private async Task RefreshStartButtonAsync()
+    private async Task RefreshStartButtonAsync(bool full = true)
     {
-        await _locator.Refresh();
+        await _locator.Refresh(full);
         if (_hooks != null)
             _hooks.EnableStartButton = _settings.EnableStartButton && _locator.Found;
     }
@@ -186,14 +195,30 @@ public partial class App : Application
 
     // ---------- catalog ----------
 
+    private bool _catalogBusy, _catalogAgain;
+
+    /// <summary>
+    /// One scan at a time (UI thread only). A request that arrives mid-scan - e.g. the menu opened during the startup scan, or a
+    /// shortcut changed while scanning - is not run in parallel; it re-runs once the current scan is done, so no change is missed.
+    /// </summary>
     private async Task RefreshCatalogAsync()
     {
+        if (_catalogBusy) { _catalogAgain = true; return; }
+        _catalogBusy = true;
         try
         {
-            var items = await AppCatalog.QueryAsync(true);
-            if (items.Count > 0) { _model.ApplyCatalog(items); _lastCatalog = DateTime.UtcNow; }
+            do
+            {
+                _catalogAgain = false;
+                try
+                {
+                    var items = await AppCatalog.QueryAsync(true);
+                    if (items.Count > 0) { _model.ApplyCatalog(items); _lastCatalog = DateTime.UtcNow; }
+                }
+                catch (Exception ex) { Log.Warn("Catalog refresh failed", ex); }
+            } while (_catalogAgain);
         }
-        catch (Exception ex) { Log.Warn("Catalog refresh failed", ex); }
+        finally { _catalogBusy = false; }
     }
 
     /// <summary>Refresh the app list shortly after Start-menu shortcuts are added/removed (debounced).</summary>
@@ -213,17 +238,31 @@ public partial class App : Application
             try
             {
                 if (!Directory.Exists(folder)) continue;
-                foreach (string filter in new[] { "*.lnk", "*.url", "*.appref-ms" })
+
+                // One watcher per root (was three, one per extension - each with its own handle and buffer receiving every event).
+                // FileName-only: nothing here cares about content/timestamp changes.
+                var w = new FileSystemWatcher(folder)
                 {
-                    var w = new FileSystemWatcher(folder, filter) { IncludeSubdirectories = true, EnableRaisingEvents = true };
-                    w.Created += (_, _) => Kick();
-                    w.Deleted += (_, _) => Kick();
-                    w.Renamed += (_, _) => Kick();
-                    _watchers.Add(w);
-                }
+                    IncludeSubdirectories = true,
+                    NotifyFilter = NotifyFilters.FileName,
+                    EnableRaisingEvents = true
+                };
+                w.Created += (_, e) => { if (IsShortcutFile(e.Name)) Kick(); };
+                w.Deleted += (_, e) => { if (IsShortcutFile(e.Name)) Kick(); };
+                w.Renamed += (_, e) => { if (IsShortcutFile(e.Name) || IsShortcutFile(e.OldName)) Kick(); };
+                w.Error += (_, _) => Kick();   // buffer overflow (big installer): events were lost, so just rescan
+                _watchers.Add(w);
             }
             catch (Exception ex) { Log.Warn("Watcher failed: " + folder, ex); }
         }
+    }
+
+    private static bool IsShortcutFile(string? name)
+    {
+        string ext = Path.GetExtension(name ?? "");
+        return ext.Equals(".lnk", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".url", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".appref-ms", StringComparison.OrdinalIgnoreCase);
     }
 
     // ---------- settings / theme ----------
@@ -259,7 +298,7 @@ public partial class App : Application
             _hooks.EnableWinKey = _settings.EnableWinKey;
             _hooks.EnableStartButton = _settings.EnableStartButton && _locator.Found;
         }
-        _model.RefreshSections();
+        // (RefreshView() above already republished the sections; a second RefreshSections() rebuilt the whole list again.)
     }
 
     private void ApplyTheme()
@@ -292,7 +331,8 @@ public partial class App : Application
             Resources["Brush.Text"] = SystemColors.WindowTextBrush;
             Resources["Brush.TextSecondary"] = SystemColors.GrayTextBrush;
             Resources["Brush.Hover"] = SystemColors.ControlLightBrush;
-            Resources["Brush.TileHover"] = SystemColors.HighlightTextBrush;
+            Resources["Brush.TileHover"] = SystemColors.WindowBrush;
+            Resources["Brush.TileHoverInnerStroke"] = SystemColors.WindowTextBrush;
             Resources["Brush.Pressed"] = SystemColors.ControlDarkBrush;
             Resources["Brush.Overlay"] = SystemColors.WindowBrush;
             Resources["Brush.Stroke"] = SystemColors.WindowTextBrush;
