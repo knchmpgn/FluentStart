@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -13,8 +14,7 @@ namespace FluentStart;
 
 /// <summary>
 /// Talks to a running Everything instance over its classic WM_COPYDATA IPC (no SDK DLL needed).
-/// UNVERIFIED against a live Everything: struct layouts (QUERYW/LISTW), dwData = 2 for the query, the reply arriving as a
-/// WM_COPYDATA to our window whose dwData equals the reply id we chose, and that 1.5 builds serve the same IPC.
+/// Uses the QUERYW/LISTW layouts and reply identifiers documented in voidtools' everything_ipc.h.
 /// Must be created and used on the UI thread (it owns a message-only window).
 /// </summary>
 internal sealed class EverythingClient : IDisposable
@@ -24,6 +24,7 @@ internal sealed class EverythingClient : IDisposable
 
     private readonly HwndSource _src;
     private readonly Dictionary<uint, TaskCompletionSource<byte[]>> _pending = new();
+    private readonly SemaphoreSlim _sendGate = new(1, 1);
     private uint _nextId = 0x7A00;
 
     public EverythingClient()
@@ -40,20 +41,55 @@ internal sealed class EverythingClient : IDisposable
         uint id = (uint)cds.dwData.ToUInt64();
         if (!_pending.Remove(id, out var tcs)) return IntPtr.Zero;
 
-        var bytes = new byte[cds.cbData];
-        if (cds.cbData > 0 && cds.lpData != IntPtr.Zero) Marshal.Copy(cds.lpData, bytes, 0, bytes.Length);
-        tcs.TrySetResult(bytes);
+        if (cds.cbData > int.MaxValue || (cds.cbData > 0 && cds.lpData == IntPtr.Zero))
+            tcs.TrySetException(new InvalidDataException("Everything returned an invalid IPC payload."));
+        else
+        {
+            var bytes = new byte[(int)cds.cbData];
+            if (bytes.Length > 0) Marshal.Copy(cds.lpData, bytes, 0, bytes.Length);
+            tcs.TrySetResult(bytes);
+        }
         handled = true;
         return (IntPtr)1;
     }
 
     public async Task<List<FileHit>> QueryAsync(IntPtr everythingHwnd, string search, int max, CancellationToken ct)
     {
-        uint id = _nextId++;
-        var tcs = new TaskCompletionSource<byte[]>();
-        _pending[id] = tcs;
+        ct.ThrowIfCancellationRequested();
+        await _sendGate.WaitAsync(ct);
+        try
+        {
+            uint id = _nextId++;
+            var tcs = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _pending[id] = tcs;
+            try
+            {
+                byte[] payload = BuildQuery((uint)_src.Handle.ToInt64(), id, 0, 0, (uint)max, search);
+                IntPtr replyHwnd = _src.Handle;
+                try { await Task.Run(() => SendQuery(everythingHwnd, replyHwnd, payload)); }
+                catch (Exception) when (ct.IsCancellationRequested)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    throw;
+                }
 
-        byte[] payload = BuildQuery((uint)_src.Handle.ToInt64(), id, 0, 0, (uint)max, search);
+                ct.ThrowIfCancellationRequested();
+                var finished = await Task.WhenAny(tcs.Task, Task.Delay(2500, ct));
+                if (finished != tcs.Task)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    throw new TimeoutException("Everything did not return search results.");
+                }
+                ct.ThrowIfCancellationRequested();
+                return ParseList(await tcs.Task);
+            }
+            finally { _pending.Remove(id); }
+        }
+        finally { _sendGate.Release(); }
+    }
+
+    private static void SendQuery(IntPtr everythingHwnd, IntPtr replyHwnd, byte[] payload)
+    {
         var pin = GCHandle.Alloc(payload, GCHandleType.Pinned);
         try
         {
@@ -63,20 +99,12 @@ internal sealed class EverythingClient : IDisposable
                 cbData = (uint)payload.Length,
                 lpData = pin.AddrOfPinnedObject()
             };
-            IntPtr r = NativeMethods.SendMessageTimeout(everythingHwnd, NativeMethods.WM_COPYDATA, _src.Handle, ref cds,
-                NativeMethods.SMTO_ABORTIFHUNG, 1500, out _);
-            if (r == IntPtr.Zero) { _pending.Remove(id); return new List<FileHit>(); }
+            IntPtr sent = NativeMethods.SendMessageTimeout(everythingHwnd, NativeMethods.WM_COPYDATA, replyHwnd, ref cds,
+                NativeMethods.SMTO_ABORTIFHUNG, 1500, out IntPtr accepted);
+            if (sent == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not send the Everything query.");
+            if (accepted == IntPtr.Zero) throw new InvalidOperationException("Everything rejected the search query.");
         }
         finally { pin.Free(); }
-
-        var finished = await Task.WhenAny(tcs.Task, Task.Delay(2500, ct));
-        if (finished != tcs.Task)
-        {
-            _pending.Remove(id);
-            ct.ThrowIfCancellationRequested();
-            return new List<FileHit>();
-        }
-        return ParseList(await tcs.Task);
     }
 
     /// <summary>EVERYTHING_IPC_QUERYW: reply_hwnd, reply_copydata_message, search_flags, offset, max_results, then the NUL-terminated UTF-16 search.</summary>
@@ -100,17 +128,17 @@ internal sealed class EverythingClient : IDisposable
     internal static List<FileHit> ParseList(byte[] d)
     {
         var hits = new List<FileHit>();
-        if (d.Length < 28) return hits;
+        if (d.Length < 28) throw new InvalidDataException("Everything returned a truncated result header.");
 
         uint count = BitConverter.ToUInt32(d, 20);   // numitems
+        if (count > (d.Length - 28) / 12) throw new InvalidDataException("Everything returned a truncated result list.");
+        int stringsStart = 28 + (int)count * 12;
         for (uint i = 0; i < count; i++)
         {
             long p = 28 + (long)i * 12;
-            if (p + 12 > d.Length) break;
-
             uint flags = BitConverter.ToUInt32(d, (int)p);
-            string name = ReadWide(d, BitConverter.ToUInt32(d, (int)p + 4));
-            string dir = ReadWide(d, BitConverter.ToUInt32(d, (int)p + 8));
+            string name = ReadWide(d, BitConverter.ToUInt32(d, (int)p + 4), stringsStart);
+            string dir = ReadWide(d, BitConverter.ToUInt32(d, (int)p + 8), stringsStart);
             if (name.Length == 0 && dir.Length == 0) continue;
 
             string full = dir.Length == 0 ? name : name.Length == 0 ? dir : Path.Combine(dir, name);
@@ -119,11 +147,13 @@ internal sealed class EverythingClient : IDisposable
         return hits;
     }
 
-    private static string ReadWide(byte[] d, uint offset)
+    private static string ReadWide(byte[] d, uint offset, int stringsStart)
     {
-        if (offset >= d.Length) return "";
+        if (offset < stringsStart || offset >= d.Length - 1)
+            throw new InvalidDataException("Everything returned an invalid string offset.");
         int start = (int)offset, end = start;
         while (end + 1 < d.Length && !(d[end] == 0 && d[end + 1] == 0)) end += 2;
+        if (end + 1 >= d.Length) throw new InvalidDataException("Everything returned an unterminated string.");
         return Encoding.Unicode.GetString(d, start, end - start);
     }
 

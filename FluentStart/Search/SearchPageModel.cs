@@ -244,7 +244,7 @@ public sealed class SearchPageModel : Observable
         catch (Exception ex) { Log.Warn("File search failed", ex); }
 
         ct.ThrowIfCancellationRequested();
-        SourceNote = "Files: " + source + (_settings.UseEverything && !_everything.Available ? " (Everything not found)" : "");
+        SourceNote = "Files: " + source + (_settings.UseEverything && !_everything.Available ? " (Everything unavailable)" : "");
         Apply(local.Concat(hits.Select((h, i) => FromHit(h, i))).ToList());
         IsBusy = false;
     }

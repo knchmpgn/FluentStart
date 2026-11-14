@@ -201,10 +201,10 @@ public static class EverythingDetector
         var running = FindRunning();
         var installed = FindInstalled();
         if (running.Count == 0 && installed.Count == 0) return "Everything was not detected (not running, no install found).";
-        var best = PickBest(running.Concat(installed));
+        var best = PickBest(running.Where(i => i.Running));
         return "Detected: " + string.Join("; ", running.Concat(installed.Where(i => running.All(r => r.ExePath != i.ExePath)))
                                                      .Select(i => i.Label + (i.ExePath != null ? $" [{i.ExePath}]" : "")))
-               + (best != null ? $"  ->  using: {best.Label}" : "");
+               + (best != null ? $"  ->  using: {best.Label}" : "  ->  no usable running IPC instance");
     }
 
     private static EverythingInfo Describe(string? exe, string? cls, IntPtr hwnd, bool isProcessRunning = false)

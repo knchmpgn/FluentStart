@@ -28,7 +28,7 @@ internal sealed class WindowsSearchProvider : IFileSearchProvider
         string q = EscapeLike(query);
         if (filter == SearchFilter.All)
         {
-            return $"SELECT TOP {max} System.ItemPathDisplay FROM SystemIndex " +
+            return $"SELECT TOP {max} System.ItemPathDisplay, System.Kind FROM SystemIndex " +
                    $"WHERE System.FileName LIKE '%{q}%' AND SCOPE='file:' ORDER BY System.DateModified DESC";
         }
         string kind = filter switch
