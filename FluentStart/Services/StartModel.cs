@@ -640,7 +640,11 @@ public sealed class StartModel : Observable
 
     public void ClearRecentlyAdded()
     {
-        _firstSeen.Clear();
+        // Do not empty the dictionary: ApplyCatalog stamps every app without an entry as "first seen now",
+        // so an empty map makes the whole catalog reappear under "Recently added" (immediately on the next
+        // catalog change, and on every restart). Backdate the current apps instead, as the initial seed does.
+        var old = DateTime.UtcNow.AddYears(-1);
+        foreach (var id in _byId.Keys) _firstSeen[id] = old;
         Storage.Save("firstseen.json", _firstSeen);
         RefreshSections();
     }

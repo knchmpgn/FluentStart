@@ -99,8 +99,17 @@ public partial class MainWindow
         var uninstall = Native(t => t.Contains("uninstall", StringComparison.OrdinalIgnoreCase), "\uE74D")
                         ?? new FlyoutItem { Text = "Uninstall", Glyph = "\uE74D", Click = () => { Open("ms-settings:appsfeatures"); } };
 
+        // "Run as administrator" is promoted to the main menu (not hidden under "More"): place it right after an "Open" entry if one
+        // exists, otherwise at the very top.
+        if (admin != null)
+        {
+            int openIndex = items.FindIndex(i => string.Equals(i.Text, "Open", StringComparison.OrdinalIgnoreCase));
+            if (openIndex >= 0) items.Insert(openIndex + 1, admin);
+            else items.Insert(0, admin);
+        }
+
         var more = new List<FlyoutItem>();
-        foreach (var f in new[] { taskbar, admin, location }) if (f != null) more.Add(f);
+        foreach (var f in new[] { taskbar, location }) if (f != null) more.Add(f);
         foreach (var v in native.Where(n => !n.HasSubmenu).ToList())
         {
             var captured = v;
