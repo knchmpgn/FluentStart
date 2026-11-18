@@ -165,7 +165,7 @@ internal sealed class InputHooks : IDisposable
                         return (IntPtr)1;
                     }
 
-                    if (msg == WM_LBUTTONDOWN && EnableStartButton && Installed && IsInsideStartButton(x, y))
+                    if (msg == WM_LBUTTONDOWN && EnableStartButton && Installed && IsInsideStartButton(x, y) && IsTaskbarUnderPoint(x, y))
                     {
                         _swallowedDown = true;
                         GlobalMouseDown?.Invoke(x, y);
@@ -186,6 +186,28 @@ internal sealed class InputHooks : IDisposable
         foreach (var b in _locator.Current)
             if (x >= b.L && x < b.R && y >= b.T && y < b.B) return true;
         return false;
+    }
+
+    /// <summary>
+    /// The cached Start-button rectangle stays valid even while the taskbar is hidden behind a fullscreen window
+    /// (video player, game, slideshow) or auto-hidden, so a rectangle test alone would steal clicks meant for the
+    /// window on top. The native Start button only reacts when the taskbar itself is what is under the cursor, so
+    /// require the same: the top-level window at the point must be a taskbar (primary or secondary).
+    /// </summary>
+    private static bool IsTaskbarUnderPoint(int x, int y)
+    {
+        try
+        {
+            IntPtr hwnd = WindowFromPoint(new POINT { X = x, Y = y });
+            if (hwnd == IntPtr.Zero) return false;
+            IntPtr root = GetAncestor(hwnd, GA_ROOT);
+            if (root == IntPtr.Zero) root = hwnd;
+            var sb = new System.Text.StringBuilder(64);
+            if (GetClassName(root, sb, sb.Capacity) == 0) return false;
+            string cls = sb.ToString();
+            return cls == "Shell_TrayWnd" || cls == "Shell_SecondaryTrayWnd";
+        }
+        catch { return false; }
     }
 
     private static void SendDummyKey()
