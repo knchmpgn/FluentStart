@@ -61,8 +61,8 @@ public sealed class SearchPageModel : Observable
     private bool _busy;
     private string _sourceNote = "";
 
-    // Favorites
-    private Dictionary<string, int> _favorites = new(StringComparer.OrdinalIgnoreCase);
+    // Learned search weighting (what you activate, and after which queries)
+    private readonly SearchWeights _weights = new();
 
     // Custom commands
     private List<CustomCommand> _customCommands = new();
@@ -75,7 +75,6 @@ public sealed class SearchPageModel : Observable
         ResultsView = CollectionViewSource.GetDefaultView(Results);
         ResultsView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(SearchResult.Section)));
         if (ResultsView is ListCollectionView lcv) lcv.CustomSort = new ResultComparer();
-        LoadFavorites();
         LoadCustomCommands();
     }
 
@@ -287,22 +286,23 @@ public sealed class SearchPageModel : Observable
 
         // Apps
         if (all || filter == SearchFilter.Apps)
-            foreach (var r in AppResults(q).Take(12)) list.Add(r);
+            foreach (var r in AppResults(q).OrderByDescending(x => x.Score).Take(12)) list.Add(r);
 
         // Custom commands
         if (all || filter == SearchFilter.Apps)
-            foreach (var r in CustomCommandResults(q).Take(12)) list.Add(r);
+            foreach (var r in CustomCommandResults(q).OrderByDescending(x => x.Score).Take(12)) list.Add(r);
 
         // Settings
         if (all || filter == SearchFilter.Settings)
             foreach (var match in SettingsCatalog.All
-                         .Select(entry => (entry, score: SettingsCatalog.Score(q, entry))).Where(m => m.score > 0)
+                         .Select(entry => (entry, score: SettingsCatalog.Score(q, entry) * 0.9)).Where(m => m.score > 0)
+                         .Select(m => (m.entry, score: m.score + Boost("setting:" + m.entry.Uri, q)))
                          .OrderByDescending(m => m.score).Take(8))
             {
                 var r = new SearchResult(SearchKind.Setting, match.entry.Title)
-                    { Subtitle = "Settings \u203A " + match.entry.Category, Score = match.score * 0.9 };
+                    { Subtitle = "Settings \u203A " + match.entry.Category, Score = match.score };
                 string uri = match.entry.Uri;
-                r.Open = () => ShellOpen(uri);
+                r.Open = () => { ShellOpen(uri); RecordUse("setting:" + uri); };
                 r.Actions.Add(new SearchAction("Open", "\uE8A7", r.Open));
                 list.Add(r);
             }
@@ -345,7 +345,7 @@ public sealed class SearchPageModel : Observable
                 Path = app.Path
             };
             var captured = app;
-            r.Open = () => _model.Launch(captured);
+            r.Open = () => { _model.Launch(captured); RecordUse(captured.Id); };
             r.Actions.Add(new SearchAction("Open", "\uE8A7", r.Open));
             if (!string.IsNullOrEmpty(app.Path))
             {
@@ -359,7 +359,7 @@ public sealed class SearchPageModel : Observable
         {
             var r = new SearchResult(SearchKind.App, cmd.Name) { Subtitle = "Custom command", Score = 50 };
             var captured = cmd;
-            r.Open = () => ExecuteCustomCommand(captured);
+            r.Open = () => { ExecuteCustomCommand(captured); RecordUse("cmd:" + captured.Name); };
             r.Actions.Add(new SearchAction("Run", "\uE718", r.Open));
             r.Actions.Add(new SearchAction("Run as administrator", "\uE7EF", () => ExecuteCustomCommand(captured, true)));
             list.Add(r);
@@ -375,8 +375,7 @@ public sealed class SearchPageModel : Observable
             double score = SearchScorer.Score(q, app.DisplayName, app.OriginalName);
             if (score <= 0) continue;
             if (app.IsPinned) score += 0.5;
-            // Boost favorites
-            if (_favorites.TryGetValue(app.Id, out int fav)) score += fav * 0.1;
+            score += Boost(app.Id, q);   // learned: how often / after which queries you activate it
 
             var r = new SearchResult(SearchKind.App, app.DisplayName)
             {
@@ -386,12 +385,12 @@ public sealed class SearchPageModel : Observable
                 Path = app.Path
             };
             var captured = app;
-            r.Open = () => { _model.Launch(captured); RecordFavorite(captured.Id); };
+            r.Open = () => { _model.Launch(captured); RecordUse(captured.Id); };
             r.Actions.Add(new SearchAction("Open", "\uE8A7", r.Open));
             if (!string.IsNullOrEmpty(app.Path))
             {
                 string path = app.Path!;
-                r.Actions.Add(new SearchAction("Run as administrator", "\uE7EF", () => RunElevated(path)));
+                r.Actions.Add(new SearchAction("Run as administrator", "\uE7EF", () => { RunElevated(path); RecordUse(captured.Id); }));
                 r.Actions.Add(new SearchAction("Open file location", "\uE838", () => Reveal(path)));
             }
             r.Actions.Add(new SearchAction(app.IsPinned ? "Unpin from Start" : "Pin to Start", "\uE718",
@@ -406,11 +405,11 @@ public sealed class SearchPageModel : Observable
         {
             double score = SearchScorer.Score(q, cmd.Name, cmd.Name);
             if (score <= 0) continue;
-            if (_favorites.TryGetValue("cmd:" + cmd.Name, out int fav)) score += fav * 0.1;
+            score += Boost("cmd:" + cmd.Name, q);
 
             var r = new SearchResult(SearchKind.App, cmd.Name) { Subtitle = "Custom command", Score = score };
             var captured = cmd;
-            r.Open = () => { ExecuteCustomCommand(captured); RecordFavorite("cmd:" + captured.Name); };
+            r.Open = () => { ExecuteCustomCommand(captured); RecordUse("cmd:" + captured.Name); };
             r.Actions.Add(new SearchAction("Run", "\uE718", r.Open));
             r.Actions.Add(new SearchAction("Run as administrator", "\uE7EF", () => ExecuteCustomCommand(captured, true)));
             yield return r;
@@ -426,9 +425,10 @@ public sealed class SearchPageModel : Observable
         {
             Path = h.FullPath,
             Subtitle = Path.GetDirectoryName(h.FullPath.TrimEnd('\\')) ?? h.FullPath,
-            Score = 40 - index * 0.5
+            Score = 40 - index * 0.5 + Boost("path:" + h.FullPath, _query.Trim())
         };
         AddFileActions(r);
+        LearnOpen(r, "path:" + h.FullPath);
         return r;
     }
 
@@ -669,27 +669,23 @@ public sealed class SearchPageModel : Observable
         catch (Exception ex) { Log.Warn("Custom command failed", ex); }
     }
 
-    private void LoadFavorites()
-    {
-        try
-        {
-            var data = Storage.Load<Dictionary<string, int>>("favorites.json");
-            if (data != null) _favorites = data;
-        }
-        catch { }
-    }
+    private double Boost(string key, string q) => _settings.LearnFavorites ? _weights.Boost(key, q) : 0;
 
-    private void SaveFavorites()
-    {
-        try { Storage.Save("favorites.json", _favorites); } catch { }
-    }
-
-    private void RecordFavorite(string id)
+    /// <summary>Called when a result is activated; remembers it together with the query that was typed at that moment.</summary>
+    private void RecordUse(string key)
     {
         if (!_settings.LearnFavorites) return;
-        if (_favorites.TryGetValue(id, out int count)) _favorites[id] = count + 1;
-        else _favorites[id] = 1;
-        SaveFavorites();
+        try { _weights.Record(key, _query); }
+        catch (Exception ex) { Log.WarnOnce("searchweights", "Recording search usage failed", ex); }
+    }
+
+    /// <summary>Wraps a file/folder result's Open (and its "Open" action) so activating it is learned.</summary>
+    private void LearnOpen(SearchResult r, string key)
+    {
+        var inner = r.Open;
+        r.Open = () => { inner(); RecordUse(key); };
+        int i = r.Actions.FindIndex(a => a.Label == "Open");
+        if (i >= 0) r.Actions[i] = new SearchAction("Open", r.Actions[i].Glyph, r.Open);
     }
 
     private void LoadCustomCommands()

@@ -62,16 +62,16 @@ public sealed class AppEntry : Observable
 
     private string? _group;
 
-    /// <summary>Letter heading: A-Z, "#" for names starting with a digit, "&amp;" for other symbols (as in the native list).</summary>
+    /// <summary>Letter heading: A-Z, or "#" for everything else (names starting with a digit or a symbol).</summary>
     public string Group => _group ??= ComputeGroup();
 
     private string ComputeGroup()
     {
         string s = DisplayName.TrimStart();
-        if (s.Length == 0) return "&";
+        if (s.Length == 0) return "#";
         char c = char.ToUpperInvariant(s[0]);
         if (char.IsLetter(c)) return c.ToString();
-        return char.IsDigit(c) ? "#" : "&";
+        return "#";
     }
 
     public bool IsEditing { get => _isEditing; set => Set(ref _isEditing, value); }

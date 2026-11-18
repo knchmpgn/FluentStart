@@ -907,7 +907,22 @@ public partial class MainWindow : Window
         var present = _model.AppsView.Groups?.OfType<CollectionViewGroup>()
                           .Select(g => g.Name?.ToString() ?? "").ToHashSet() ?? new();
         JumpGrid.Children.Clear();
-        var keys = new[] { "&", "#" }.Concat(Enumerable.Range('A', 26).Select(c => ((char)c).ToString()));
+        // First cell: a clock that jumps to "Recently added" (as in the Windows 10 Start menu). Then "#" (digits and symbols), then A-Z.
+        var recent = new Button
+        {
+            Content = "\uE121",
+            Tag = StartModel.RecentlyAdded,
+            ToolTip = StartModel.RecentlyAdded,
+            Style = (Style)FindResource("JumpButton"),
+            FontFamily = (FontFamily)FindResource("IconFont"),
+            FontWeight = FontWeights.Normal,
+            FontSize = 20,
+            IsEnabled = present.Contains(StartModel.RecentlyAdded)
+        };
+        recent.Click += Jump_Click;
+        JumpGrid.Children.Add(recent);
+
+        var keys = new[] { "#" }.Concat(Enumerable.Range('A', 26).Select(c => ((char)c).ToString()));
         foreach (var key in keys)
         {
             var b = new Button
