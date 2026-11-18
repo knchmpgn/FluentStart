@@ -231,7 +231,7 @@ public sealed class TilePanel : Panel
     /// The tile whose middle the point is over (panel coordinates), measured on the layout without the open slot; null elsewhere.
     /// Dropping an item here makes a folder instead of reordering. <paramref name="exclude"/> (the tile being dragged) never matches.
     /// </summary>
-    public TileModel? TileAtCenter(Point p, TileModel? exclude)
+    public TileModel? TileAtCenter(Point p, TileModel? exclude, double inset = 0.28)
     {
         if (_basePos.Count != InternalChildren.Count) Recompute();
         for (int i = 0; i < _sizes.Length; i++)
@@ -241,11 +241,26 @@ public sealed class TilePanel : Panel
             var model = ModelOf(InternalChildren[i]);
             if (model == null || ReferenceEquals(model, exclude)) continue;
             var cell = new Rect(_basePos[i].X * Cell, _basePos[i].Y * Cell, w * Cell, h * Cell);
-            double dx = Math.Min(cell.Width * 0.28, cell.Width / 2 - 8), dy = Math.Min(cell.Height * 0.28, cell.Height / 2 - 8);
+            double dx = Math.Min(cell.Width * inset, cell.Width / 2 - 8), dy = Math.Min(cell.Height * inset, cell.Height / 2 - 8);
             var middle = new Rect(cell.X + dx, cell.Y + dy, Math.Max(1, cell.Width - 2 * dx), Math.Max(1, cell.Height - 2 * dy));
             if (middle.Contains(p)) return model;
         }
         return null;
+    }
+
+    /// <summary>True when the point is over <paramref name="model"/>'s cell (base layout, no open slot), enlarged by <paramref name="margin"/> on every side.</summary>
+    public bool ContainsTile(TileModel model, Point p, double margin)
+    {
+        if (_basePos.Count != InternalChildren.Count) Recompute();
+        for (int i = 0; i < _sizes.Length; i++)
+        {
+            var (w, h) = _sizes[i];
+            if (w == 0 || !ReferenceEquals(ModelOf(InternalChildren[i]), model)) continue;
+            var cell = new Rect(_basePos[i].X * Cell, _basePos[i].Y * Cell, w * Cell, h * Cell);
+            cell.Inflate(margin, margin);
+            return cell.Contains(p);
+        }
+        return false;
     }
 
 }

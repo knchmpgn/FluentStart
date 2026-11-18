@@ -902,8 +902,6 @@ public partial class MainWindow : Window
 
     private void GroupHeader_Click(object sender, RoutedEventArgs e)
     {
-        if (((Button)sender).Content is string s && (s == StartModel.MostUsed || s == StartModel.RecentlyAdded)) return;
-
         var present = _model.AppsView.Groups?.OfType<CollectionViewGroup>()
                           .Select(g => g.Name?.ToString() ?? "").ToHashSet() ?? new();
         JumpGrid.Children.Clear();

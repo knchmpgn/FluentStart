@@ -27,6 +27,10 @@ public partial class MainWindow
 
     private const double DimOpacity = 0.62, DimScale = 0.94, GroupShift = 30;
 
+    // Making a folder: rest the pointer on the middle of a tile. The middle is generous (the inner 70% of the tile), the pause is short,
+    // and once a tile is chosen it stays chosen while the pointer is anywhere over it, so a slightly shaky hand does not lose it.
+    private const double FolderDwellMs = 160, FolderCenterInset = 0.15, FolderStickyMargin = 6;
+
     private sealed class GroupHost
     {
         public StackPanel Host = null!;
@@ -302,7 +306,7 @@ public partial class MainWindow
         dt = Math.Clamp(dt, 0, 0.05);
 
         if (s.FolderCandidate != null && s.TargetTile == null &&
-            Stopwatch.GetElapsedTime(s.FolderCandidateSince).TotalMilliseconds >= 750)
+            Stopwatch.GetElapsedTime(s.FolderCandidateSince).TotalMilliseconds >= FolderDwellMs)
             UpdateDrag(Mouse.GetPosition(RootGrid));
 
         if (!TilesScroll.IsVisible || TilesScroll.ScrollableHeight <= 0) return;
@@ -410,13 +414,18 @@ public partial class MainWindow
                         }
                         // Pause over a tile's center to choose a folder instead of an ordinary placement.
                         bool canJoin = s.Payload is not TileModel { IsFolderTile: true } && s.Payload is not AppEntry { IsFolder: true };
-                        var candidate = canJoin ? panel.TileAtCenter(Mouse.GetPosition(panel), s.DraggedTile) : null;
+                        Point inPanel = Mouse.GetPosition(panel);
+                        TileModel? candidate = null;
+                        if (canJoin)
+                            candidate = s.TargetTile != null && panel.ContainsTile(s.TargetTile, inPanel, FolderStickyMargin)
+                                ? s.TargetTile                                                       // already chosen: keep it while the pointer is over it
+                                : panel.TileAtCenter(inPanel, s.DraggedTile, FolderCenterInset);
                         if (!ReferenceEquals(candidate, s.FolderCandidate))
                         {
                             s.FolderCandidate = candidate;
                             s.FolderCandidateSince = Stopwatch.GetTimestamp();
                         }
-                        if (candidate != null && Stopwatch.GetElapsedTime(s.FolderCandidateSince).TotalMilliseconds >= 750)
+                        if (candidate != null && Stopwatch.GetElapsedTime(s.FolderCandidateSince).TotalMilliseconds >= FolderDwellMs)
                             intoTile = candidate;
                         if (intoTile != null)
                         {
