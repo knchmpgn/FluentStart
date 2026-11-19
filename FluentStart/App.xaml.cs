@@ -106,12 +106,29 @@ public partial class App : Application
         WatchStartMenuFolders();
 
         _locator.Refresh().GetAwaiter().GetResult();   // ensure the Start-button rects are known before any hook can fire
-        string? hookWarning = _settings.EnableStartButton && !_locator.Found
-            ? "FluentStart could not verify the taskbar Start button. It will leave the native Start button working until the button can be located."
-            : null;
+        string? hookWarning = null;
         _locatorTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };   // events (show, TaskbarCreated, display change) cover most changes
         _locatorTimer.Tick += (_, _) => _ = RefreshStartButtonAsync(full: false);
         _locatorTimer.Start();
+
+        // A miss on the very first lookup is normal when FluentStart starts together with Explorer (the taskbar's UI is not built yet);
+        // the poll above picks the button up within seconds. Only warn if it is still missing after a grace period, and log what the
+        // taskbar actually exposes so the cause can be read from log.txt.
+        if (_settings.EnableStartButton && !_locator.Found)
+        {
+            var graceTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(12) };
+            graceTimer.Tick += async (_, _) =>
+            {
+                graceTimer.Stop();
+                if (_locator.Found) return;
+                await RefreshStartButtonAsync();   // one last full search
+                if (_locator.Found) return;
+                _ = Task.Run(Diagnostics.DumpTaskbar);
+                MessageBox.Show("FluentStart could not verify the taskbar Start button. It will leave the native Start button working until the button can be located.\n\nWhat the taskbar exposes was written to " +
+                                Path.Combine(Storage.DataDir, "log.txt"), "FluentStart", MessageBoxButton.OK, MessageBoxImage.Warning);
+            };
+            graceTimer.Start();
+        }
 
         if (!noHooks)
         {

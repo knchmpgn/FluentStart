@@ -54,6 +54,33 @@ internal sealed class StartButtonLocator
         });
     }
 
+    /// <summary>
+    /// Fallback when the exact AutomationId / Name lookups miss (a different Windows build, a localized Name, a taskbar tweak that renames the
+    /// element): read every descendant's id and name in one cached pass and accept the ids and names a Start button is known to use.
+    /// Deliberately not a position guess - taking the wrong button would swallow its clicks.
+    /// </summary>
+    private static AutomationElement? ScanForStartButton(AutomationElement root)
+    {
+        var req = new CacheRequest { TreeScope = TreeScope.Element };
+        req.Add(AutomationElement.AutomationIdProperty);
+        req.Add(AutomationElement.NameProperty);
+        req.Add(AutomationElement.BoundingRectangleProperty);
+        AutomationElementCollection all;
+        using (req.Activate()) all = root.FindAll(TreeScope.Descendants, Condition.TrueCondition);
+        foreach (AutomationElement e in all)
+        {
+            string id = e.Cached.AutomationId ?? "", name = e.Cached.Name ?? "";
+            var rect = e.Cached.BoundingRectangle;
+            if (rect.IsEmpty || rect.Width <= 0 || rect.Height <= 0) continue;
+            if (id.EndsWith("StartButton", StringComparison.OrdinalIgnoreCase)
+                || id.Equals("Start", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("Start", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("Start button", StringComparison.OrdinalIgnoreCase))
+                return e;
+        }
+        return null;
+    }
+
     private void AddBox(List<Box> list, IntPtr taskbarHwnd)
     {
         if (_elements.TryGetValue(taskbarHwnd, out var known))
@@ -80,6 +107,7 @@ internal sealed class StartButtonLocator
                      new AndCondition(
                          new PropertyCondition(AutomationElement.NameProperty, "Start"),
                          new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button)));
+        el ??= ScanForStartButton(root);
         if (el == null) return;
         var r = el.Current.BoundingRectangle;
         if (!r.IsEmpty)
